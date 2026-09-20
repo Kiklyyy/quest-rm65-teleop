@@ -1,0 +1,58 @@
+# ROS / colcon outputs
+build/
+install/
+log/
+**/build/
+**/install/
+**/log/
+
+# Worktrees and agent scratch space
+.worktrees/
+worktrees/
+.superpowers/
+.import/
+
+# Python and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE and editor artifacts
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*~
+
+# Runtime logs and captures
+*.log
+*.bag
+*.db3
+*.mcap
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# Model weights and generated engines
+*.pt
+*.pth
+*.onnx
+*.engine
+*.weights
+
+# Credentials and local environment
+.env
+.env.*
+!.env.example
+.ssh/
+id_rsa*
+id_ed25519*
+*.pem
+*.key
+credentials*
+secrets*
