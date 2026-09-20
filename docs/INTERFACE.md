@@ -72,33 +72,27 @@
 
 以下为 B 侧基于实际 driver 源码与现场验证确认的接口；计划新增项仍明确标注为尚未实现。
 
-## A/B 最小接口约定（待 A 侧实现）
+## A/B 最小接口约定
 
-### 显式 enable
+### 第一阶段显式 enable（当前已存在）
 
-| Topic | 类型 | 发布方 | 消费方 |
-|---|---|---|---|
-| `/quest_right_teleop_enable` | `std_msgs/msg/Bool` | A | B |
+第一阶段直接使用 `/q2r_right_hand_inputs` 的 `button_lower` 作为显式 deadman：
 
-语义：
+- `button_lower=true` 只表示用户当前按住 deadman；
+- B 侧独立检查 Inputs 接收时间、原始 Quest Pose、虚拟 target 和机器人反馈；
+- 任一路超时、非有限数据、工作空间违规或突跳都会退出 ACTIVE；
+- 数据恢复不得自动继续，必须先看到 `button_lower=false`，再由下一次 `false → true` 重新采集双锚点；
+- B 侧不得用 `/quest_right_target_pose` 持续刷新的 header stamp 代替原始输入 watchdog。
 
-- `true` 只表示 A 侧 deadman 当前有效、Pose watchdog 有效、Inputs watchdog 有效且不在 `REARM_REQUIRED`；
-- 任一条件失效必须立即发布 `false`；
-- 超时恢复不得自动回到 `true`，必须经过 release → press；
-- B 侧只在 `false → true` 上升沿采集 Quest 与机器人双锚点；
-- B 侧仍独立订阅原始 Quest Pose 和 Inputs，并执行自己的接收时间 watchdog；
-- B 侧不得用 `/quest_right_target_pose` 的 header stamp 代替 enable 或原始输入新鲜度。
+未来如 A 侧增加聚合后的 `/quest_right_teleop_enable`，可作为可选接口另行对齐；它不是第一阶段 dry-run 和独立 B 侧 rearm 状态机的前置条件。
 
-该 topic 当前尚不存在；在 A 侧实现并合并前，B 侧 adapter 必须保持非 ACTIVE，正式真机输出不得启用。测试时只能通过 remap 后的测试 topic 注入 enable。
-
-### B 侧计划输入
+### B 侧第一阶段输入
 
 | Topic | 类型 | 用途 |
 |---|---|---|
 | `/quest_right_target_pose` | `geometry_msgs/msg/PoseStamped` | A 侧映射后的虚拟右手目标，只使用相对平移 |
 | `/q2r_right_hand_pose` | `geometry_msgs/msg/PoseStamped` | 独立 Quest Pose 接收 watchdog |
-| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | 独立 Inputs 接收 watchdog |
-| `/quest_right_teleop_enable` | `std_msgs/msg/Bool` | 显式 deadman、validity 和 rearm 授权 |
+| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `button_lower` deadman 与独立 Inputs watchdog |
 | `/right/rm_driver/udp_arm_position` | `geometry_msgs/msg/Pose` | 机器人真实末端 Pose、锚点和反馈 watchdog |
 
 ### B 侧计划输出
@@ -121,6 +115,14 @@ mapping_verified=false
 当以上任一安全门不满足时，adapter 不得创建或使用真实运动命令发布路径。
 
 ## 坐标与锚定
+
+A 侧已于 2026-09-20 完成真实 Quest + RViz 现场方向验证：
+
+```text
+Quest world: +X=前，+Y=左，+Z=上
+```
+
+A 侧 bridge 保持 identity。B 侧配置先采用 identity 作为候选矩阵，但在 RM65 base frame 的物理 `+X/+Y/+Z` 经三个独立小位移现场确认前，必须保持 `mapping_verified=false`。
 
 enable 上升沿同时采集：
 

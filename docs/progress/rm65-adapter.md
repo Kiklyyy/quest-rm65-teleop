@@ -2,7 +2,7 @@
 
 - 负责人：B 同学
 - 建议分支：`feat/rm65-adapter`
-- 当前状态：**尚未实现**
+- 当前状态：**Dry-run C++ v1 已实现并通过单元测试；真机写入尚未实现**
 
 ## 职责边界
 
@@ -59,11 +59,21 @@
 
 上述仅是受控微动证据，不等于 Quest 遥操作、watchdog 或最终安全验收完成。
 
+### Dry-run C++ v1
+
+- 新建 `src/rm65_teleop_adapter`，当前实现不依赖 `rm_ros_interfaces`；
+- 源码中不存在 `movep_canfd_cmd`、`move_stop_cmd` 或任何真实硬件命令 publisher；
+- `dry_run=false` 或 `hardware_write_enabled=true` 时节点拒绝启动；
+- 使用 `button_lower`、四路独立 watchdog、双锚点、固定姿态、identity 候选映射；
+- 已实现速度、单步、workspace、突跳、NaN/Inf、rearm 和 latched fault；
+- 独立构建成功，8 项 GTest 全部通过，`colcon test-result` 为 9 tests、0 failures；
+- 10 秒 live dry-run 正常启动/退出，命令 topic publisher 始终为 0；
+- A 侧现场确认 `+X=前、+Y=左、+Z=上`，RM65 base 物理方向仍待现场三轴确认。
+
 ### 下一项实现
 
-1. 新建独立 C++ ROS 2 包 `rm65_teleop_adapter`；
-2. 默认 `dry_run=true`、`hardware_write_enabled=false`、`mapping_verified=false`；
-3. 实现双锚点、固定姿态、映射、限速、单步限制、workspace 和 rearm 状态机；
-4. 记录控制周期和最大发送间隔，超限进入 latched fault；
-5. 使用 remap 后的测试 topic 完成 dry-run 自动化测试；
-6. A 侧实现并对齐 `/quest_right_teleop_enable` 后，才进行 Quest 真机连续控制。
+1. 使用 remap 后的测试 topic 增加 ROS 级 dry-run 集成测试，不向 live Quest topic 注入模拟消息；
+2. 现场分别执行 RM65 base `+X/+Y/+Z` 极小位移并记录物理方向；
+3. 确认 mapping 后才把 `mapping_verified` 设为 true；
+4. 增加真实 CANFD publisher、普通 stop、发送周期 fault 和唯一命令源检查，但继续默认关闭硬件写入；
+5. 完成 stop/rearm 集成测试后，才进入 Quest 真机连续控制。

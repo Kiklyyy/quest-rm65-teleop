@@ -1,0 +1,45 @@
+cmake_minimum_required(VERSION 3.8)
+project(rm65_teleop_adapter)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(ament_cmake REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(quest2ros REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+
+add_library(adapter_logic src/adapter_logic.cpp)
+target_include_directories(adapter_logic PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+
+add_executable(rm65_teleop_adapter_node src/adapter_node.cpp)
+target_link_libraries(rm65_teleop_adapter_node adapter_logic)
+ament_target_dependencies(rm65_teleop_adapter_node
+  geometry_msgs quest2ros rclcpp std_msgs std_srvs)
+
+install(TARGETS adapter_logic rm65_teleop_adapter_node
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
+install(FILES README.md DESTINATION share/${PROJECT_NAME})
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_adapter_logic test/test_adapter_logic.cpp)
+  target_link_libraries(test_adapter_logic adapter_logic)
+  target_include_directories(test_adapter_logic PRIVATE include)
+endif()
+
+ament_export_include_directories(include)
+ament_export_libraries(adapter_logic)
+ament_package()

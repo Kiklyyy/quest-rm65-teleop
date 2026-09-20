@@ -1,0 +1,20 @@
+rm65_teleop_adapter:
+  ros__parameters:
+    dry_run: true
+    hardware_write_enabled: false
+    mapping_verified: false
+    control_rate_hz: 200.0
+    # A-side field validation: +X forward, +Y left, +Z up.
+    # RM65 base directions still require on-site verification.
+    mapping: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    translation_scale: 1.0
+    target_timeout: 0.20
+    quest_pose_timeout: 0.20
+    inputs_timeout: 0.20
+    robot_timeout: 0.10
+    max_velocity_mps: 0.01
+    max_step_m: 0.0001
+    unexpected_target_jump_m: 0.10
+    workspace_min: [-1.0, -1.0, 0.0]
+    workspace_max: [1.0, 1.0, 1.5]
+    preview_frame_id: right_rm65_base
