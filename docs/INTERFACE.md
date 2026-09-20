@@ -32,6 +32,18 @@
 - Pose 与 Marker 由 50 Hz timer 持续发布；
 - 输出 stamp 使用当前 ROS node clock，不沿用 Quest 输入 header。
 
+### 已完成的真实 Quest 物理方向验收
+
+现场使用真实 Quest 手柄逐轴移动并观察 `/quest_right_target_pose`：
+
+| 真实手柄运动 | Virtual target 变化 | Quest/virtual world 物理含义 |
+|---|---|---|
+| 向前 | X 增加 | `+X = 前` |
+| 向右 | Y 减少 | `+Y = 左` |
+| 向上 | Z 增加 | `+Z = 上` |
+
+真实 Quest + RViz 也已验证未按 deadman 时冻结、按住时跟随、松开后冻结，以及松开期间移动后重新按下不跳变。当前 bridge 的 identity mapping 无需为 Quest 自身修改。
+
 ## 关键安全含义
 
 > **冻结的目标仍会由 50 Hz timer 持续刷新 timestamp。不能仅根据 `/quest_right_target_pose` 的新鲜度判断 Quest 在线、deadman 正在按下或用户允许机器人运动。**
@@ -71,3 +83,44 @@
 - 任何真实控制输出都需现场操作者明确授权。
 
 具体 RM65 command topic/action、控制频率和停止接口仍待 B 同学基于实际驱动确认，当前不得猜测。
+
+### 候选平移增量映射
+
+用户通过 RM65 示教器在**当前所选工作坐标系**中实际点动确认：
+
+- `RM +X = 上`
+- `RM +Y = 后`
+- `RM +Z = 右`
+
+结合已验证的 Quest 物理方向，得到候选 translation delta mapping：
+
+```text
+RM_dx =  Quest_dz
+RM_dy = -Quest_dx
+RM_dz = -Quest_dy
+
+[ RM_dx ]   [  0   0   1 ] [ Quest_dx ]
+[ RM_dy ] = [ -1   0   0 ] [ Quest_dy ]
+[ RM_dz ]   [  0  -1   0 ] [ Quest_dz ]
+```
+
+这是**平移增量映射，不是绝对位置变换**。B 侧在正式使用前必须确认 adapter 的实际笛卡尔命令 frame 与上述示教器当前工作坐标系相同。
+
+禁止把 virtual target 初始值 `(0.5, 0.0, 0.5)` 直接作为 RM65 目标位置。真机启用时应记录机器人当前末端位置 `R0` 和当前 Quest target `Q0`，随后计算：
+
+```text
+Delta_Q = Qcurrent - Q0
+Delta_R = M * Delta_Q
+Rtarget = R0 + Delta_R
+```
+
+第一版保持机器人当前末端姿态不变，不使用 virtual target 的 identity orientation 作为真机绝对姿态。
+
+### 单位契约
+
+Quest `geometry_msgs/msg/PoseStamped` 的位置按 ROS SI 约定使用 meter；RM65 示教器界面显示 mm，但这不能代表 adapter 实际命令接口的单位。
+
+- 若 B 侧实际控制接口使用 mm：`Delta_R_mm = 1000 * M * Delta_Q_m`。
+- 若 B 侧 ROS 控制接口本身使用 meter：不得额外乘以 1000。
+
+单位必须由 B 侧根据实际命令接口确认，不能根据示教器 UI 猜测。
