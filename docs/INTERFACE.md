@@ -70,4 +70,108 @@
 - 一只机械臂同一时刻只有一套指定驱动和命令来源；
 - 任何真实控制输出都需现场操作者明确授权。
 
-具体 RM65 command topic/action、控制频率和停止接口仍待 B 同学基于实际驱动确认，当前不得猜测。
+以下为 B 侧基于实际 driver 源码与现场验证确认的接口；计划新增项仍明确标注为尚未实现。
+
+## A/B 最小接口约定（待 A 侧实现）
+
+### 显式 enable
+
+| Topic | 类型 | 发布方 | 消费方 |
+|---|---|---|---|
+| `/quest_right_teleop_enable` | `std_msgs/msg/Bool` | A | B |
+
+语义：
+
+- `true` 只表示 A 侧 deadman 当前有效、Pose watchdog 有效、Inputs watchdog 有效且不在 `REARM_REQUIRED`；
+- 任一条件失效必须立即发布 `false`；
+- 超时恢复不得自动回到 `true`，必须经过 release → press；
+- B 侧只在 `false → true` 上升沿采集 Quest 与机器人双锚点；
+- B 侧仍独立订阅原始 Quest Pose 和 Inputs，并执行自己的接收时间 watchdog；
+- B 侧不得用 `/quest_right_target_pose` 的 header stamp 代替 enable 或原始输入新鲜度。
+
+该 topic 当前尚不存在；在 A 侧实现并合并前，B 侧 adapter 必须保持非 ACTIVE，正式真机输出不得启用。测试时只能通过 remap 后的测试 topic 注入 enable。
+
+### B 侧计划输入
+
+| Topic | 类型 | 用途 |
+|---|---|---|
+| `/quest_right_target_pose` | `geometry_msgs/msg/PoseStamped` | A 侧映射后的虚拟右手目标，只使用相对平移 |
+| `/q2r_right_hand_pose` | `geometry_msgs/msg/PoseStamped` | 独立 Quest Pose 接收 watchdog |
+| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | 独立 Inputs 接收 watchdog |
+| `/quest_right_teleop_enable` | `std_msgs/msg/Bool` | 显式 deadman、validity 和 rearm 授权 |
+| `/right/rm_driver/udp_arm_position` | `geometry_msgs/msg/Pose` | 机器人真实末端 Pose、锚点和反馈 watchdog |
+
+### B 侧计划输出
+
+| Topic | 类型 | 条件 |
+|---|---|---|
+| `/right/rm65_teleop/preview_target_pose` | `geometry_msgs/msg/PoseStamped` | dry-run 和真机模式均可发布 |
+| `/right/rm65_teleop/status` | `std_msgs/msg/String` | 发布状态、freshness、fault 和硬件写入锁状态 |
+| `/right/rm_driver/movep_canfd_cmd` | `rm_ros_interfaces/msg/Cartepos` | 仅非 dry-run、硬件写入显式启用、现场映射确认且状态为 ACTIVE |
+| `/right/rm_driver/move_stop_cmd` | `std_msgs/msg/Empty` | 真机 ACTIVE 退出或 watchdog/fault 时 |
+
+dry-run 默认值必须为：
+
+```text
+dry_run=true
+hardware_write_enabled=false
+mapping_verified=false
+```
+
+当以上任一安全门不满足时，adapter 不得创建或使用真实运动命令发布路径。
+
+## 坐标与锚定
+
+enable 上升沿同时采集：
+
+```text
+quest_anchor = 当前 /quest_right_target_pose.position
+robot_anchor = 当前 /right/rm_driver/udp_arm_position
+```
+
+第一阶段命令：
+
+```text
+p_robot_cmd = p_robot_anchor
+              + R_mapping * translation_scale
+              * (p_quest_now - p_quest_anchor)
+
+q_robot_cmd = q_robot_anchor
+```
+
+要求：
+
+- 不把 Quest `world` 中的绝对 `(0.5, 0.0, 0.5)` 当作机器人坐标；
+- `R_mapping` 必须是现场验证的 Quest XYZ 到 RM65 base XYZ 的带符号轴映射；
+- 第一阶段禁止 Quest orientation、夹爪、左臂和双臂控制；
+- 每次重新授权都重新采集双锚点，恢复时不得跳变；
+- 映射确认前 `mapping_verified=false`，禁止真机写入。
+
+## 已确认的右 RM65 runtime 接口
+
+控制机环境实测：ROS 2 Humble，`ROS_DOMAIN_ID=42`，右臂地址 `169.254.128.19:8080`，UDP 回传 `169.254.128.100:8090`。
+
+| Topic | 类型 | 实测/源码结论 |
+|---|---|---|
+| `/right/joint_states` | `sensor_msgs/msg/JointState` | 6 关节，实测约 197 Hz |
+| `/right/rm_driver/udp_arm_position` | `geometry_msgs/msg/Pose` | 实测约 197 Hz |
+| `/right/rm_driver/get_current_arm_state_cmd` | `std_msgs/msg/Empty` | 只读主动查询 |
+| `/right/rm_driver/get_current_arm_state_result` | `rm_ros_interfaces/msg/Armstate` | 实测 `err=0`、`dof=6` |
+| `/right/rm_driver/movep_canfd_cmd` | `rm_ros_interfaces/msg/Cartepos` | 连续 Cartesian CANFD 透传 |
+| `/right/rm_driver/move_stop_cmd` | `std_msgs/msg/Empty` | 调用 `rm_set_arm_stop()`，轨迹急停，不是控制柜 emergency stop |
+
+driver 必须以 `/right` namespace 和右臂参数单独启动。启动 driver 本身只连接 SDK、配置 UDP 和创建 ROS 接口，不包含自动运动。
+
+## 2026-09-20 真机微动与停止证据
+
+- 低跟随首次 `+Z 3 mm`：实际 `+3.007 mm`，普通 stop 返回 `true`；
+- 低跟随运动中 stop：停止时仍落后最后指令约 `0.5 mm`，随后继续到最后一个目标点附近；
+- 高跟随小位移 stop：停止后余量约 `0.063 mm`，明显小于低跟随；
+- 临时 Python 高跟随发送器最大发送间隔实测 `17.5 ms`，不满足厂商高跟随周期不超过 `10 ms` 的要求。
+
+因此：
+
+- 正式 adapter 优先使用 C++ 实现并监测实际发送间隔；
+- 未证明持续满足周期要求前，不得启用 Quest 真机连续控制；
+- 普通 stop 返回成功不等于零制动距离，workspace 和 watchdog 设计必须保留停止余量；
+- `emergency_stop_cmd` 是独立的控制柜急停/恢复接口，不用于普通 deadman 或 watchdog。
