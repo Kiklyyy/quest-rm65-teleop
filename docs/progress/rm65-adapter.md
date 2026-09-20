@@ -2,7 +2,7 @@
 
 - 负责人：B 同学
 - 建议分支：`feat/rm65-adapter`
-- 当前状态：**Dry-run C++ v1 已实现并通过单元测试；真机写入尚未实现**
+- 当前状态：**硬件写入已实现并通过隔离联调；Quest 真机运动验收尚未完成**
 
 ## 职责边界
 
@@ -59,21 +59,49 @@
 
 上述仅是受控微动证据，不等于 Quest 遥操作、watchdog 或最终安全验收完成。
 
-### Dry-run C++ v1
+### C++ adapter v2
 
-- 新建 `src/rm65_teleop_adapter`，当前实现不依赖 `rm_ros_interfaces`；
-- 源码中不存在 `movep_canfd_cmd`、`move_stop_cmd` 或任何真实硬件命令 publisher；
-- `dry_run=false` 或 `hardware_write_enabled=true` 时节点拒绝启动；
-- 使用 `button_lower`、四路独立 watchdog、双锚点、固定姿态、identity 候选映射；
+- 新建 `src/rm65_teleop_adapter`，dry-run 仍为默认模式；
+- 硬件 publisher 只在 `dry_run=false`、`hardware_write_enabled=true`、
+  `mapping_verified=true` 同时成立时创建；
+- 使用 `button_lower`、四路独立 watchdog、双锚点、固定姿态和已确认方向矩阵；
 - 已实现速度、单步、workspace、突跳、NaN/Inf、rearm 和 latched fault；
-- 独立构建成功，8 项 GTest 全部通过，`colcon test-result` 为 9 tests、0 failures；
+- 新增 3 cm 锚点半径、控制周期 guard 和唯一 command/stop 通路检查；
+- ACTIVE 退出时停止发送 CANFD 点并重复发布 3 次普通 stop；
+- 独立构建成功，12 项 GTest 全部通过，`colcon test-result` 为
+  13 tests、0 failures；
 - 10 秒 live dry-run 正常启动/退出，命令 topic publisher 始终为 0；
-- A 侧现场确认 `+X=前、+Y=左、+Z=上`，RM65 base 物理方向仍待现场三轴确认。
+- A 侧现场确认 `+X=前、+Y=左、+Z=上`；右 RM65 base 为
+  `+X=上、+Y=后、+Z=右`；
+- 最终矩阵为 `rm_x=quest_z`、`rm_y=-quest_x`、`rm_z=-quest_y`。
+
+### 2026-09-20 隔离硬件模式验证
+
+- 所有模拟数据和 command/stop 均 remap 到 `/test/rm65_adapter/*`，正式真机
+  command topic 在测试前后均为 0 publisher；
+- release 后进入 ARMED，press 后进入 ACTIVE；
+- Quest `+X 10 mm` 生成 RM65 `-Y 2.0 mm` 命令，姿态与另外两轴保持不变；
+- 一秒内观察到 196 个 command callback；
+- Inputs 断流后进入 REARM_REQUIRED 并收到 3 个 stop；
+- 数据恢复且按键仍按住时不自动继续；release→press 后重新 ACTIVE；
+- high-follow 的 10 ms guard 在当前负载下捕获 `13.48 ms`/`21.87 ms`
+  抖动。经现场操作者明确授权，硬件 profile 改为低跟随，名义 200 Hz、
+  50 ms 严重卡顿 guard；隔离联调峰值约 `22.79 ms`，测试通过。
+
+### 真机 Quest 启动检查
+
+- 启动前右臂 `err=0`、`dof=6`，command topic 为 0 publisher / 1 driver subscriber；
+- Quest Inputs 恢复后实测平均约 76.9 Hz、最大间隔约 165 ms，低于当前
+  200 ms watchdog，但仍需继续观察稳定性；
+- 真机 adapter 成功启动到 ARMED，命令通路为 1 publisher / 1 subscriber；
+- 30 秒观察期内操作者未按下 `button_lower`，command 数为 0，随后已发送
+  普通 stop 并关闭 adapter；
+- 因此尚不能宣称 Quest 真机运动方向和 deadman 停止已完成验收。
 
 ### 下一项实现
 
-1. 使用 remap 后的测试 topic 增加 ROS 级 dry-run 集成测试，不向 live Quest topic 注入模拟消息；
-2. 现场分别执行 RM65 base `+X/+Y/+Z` 极小位移并记录物理方向；
-3. 确认 mapping 后才把 `mapping_verified` 设为 true；
-4. 增加真实 CANFD publisher、普通 stop、发送周期 fault 和唯一命令源检查，但继续默认关闭硬件写入；
-5. 完成 stop/rearm 集成测试后，才进入 Quest 真机连续控制。
+1. 重新启动 hardware profile，由操作者完成首次 `button_lower` press、小位移、release；
+2. 实测并记录三条物理映射、deadman stop 和停止余量；
+3. 分别执行 Pose、Inputs、robot feedback 断流的真机安全测试；
+4. 观察 Quest Inputs 最大间隔，必要时先修复 A 侧链路稳定性再继续验收；
+5. 完成全部验收后才提高尺度/速度或扩展旋转、夹爪和左臂。

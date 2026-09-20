@@ -15,6 +15,8 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "quest2ros/msg/ovr2_ros_inputs.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "rm_ros_interfaces/msg/cartepos.hpp"
+#include "std_msgs/msg/empty.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
@@ -67,15 +69,20 @@ public:
     dry_run_ = declare_parameter<bool>("dry_run", true);
     hardware_write_enabled_ = declare_parameter<bool>("hardware_write_enabled", false);
     mapping_verified_ = declare_parameter<bool>("mapping_verified", false);
-    if (!dry_run_ || hardware_write_enabled_) {
-      throw std::invalid_argument(
-              "This milestone is dry-run only: dry_run must be true and hardware_write_enabled false");
+    if (dry_run_ && hardware_write_enabled_) {
+      throw std::invalid_argument("dry_run=true requires hardware_write_enabled=false");
     }
+    if (!dry_run_ && (!hardware_write_enabled_ || !mapping_verified_)) {
+      throw std::invalid_argument(
+              "hardware mode requires dry_run=false, hardware_write_enabled=true and mapping_verified=true");
+    }
+    hardware_mode_ = !dry_run_ && hardware_write_enabled_ && mapping_verified_;
 
     AdapterConfig config;
     config.translation_scale = declare_parameter<double>("translation_scale", 1.0);
     config.max_velocity_mps = declare_parameter<double>("max_velocity_mps", 0.01);
     config.max_step_m = declare_parameter<double>("max_step_m", 0.0001);
+    config.max_anchor_distance_m = declare_parameter<double>("max_anchor_distance_m", 0.03);
     config.unexpected_target_jump_m = declare_parameter<double>("unexpected_target_jump_m", 0.10);
     const auto mapping = declare_parameter<std::vector<double>>(
       "mapping", {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0});
@@ -95,10 +102,15 @@ public:
     quest_pose_timeout_ = declare_parameter<double>("quest_pose_timeout", 0.20);
     inputs_timeout_ = declare_parameter<double>("inputs_timeout", 0.20);
     robot_timeout_ = declare_parameter<double>("robot_timeout", 0.10);
+    max_control_period_ = declare_parameter<double>("max_control_period", 0.010);
+    follow_ = declare_parameter<bool>("follow", true);
+    stop_repeat_count_ = declare_parameter<int>("stop_repeat_count", 3);
     const double control_rate_hz = declare_parameter<double>("control_rate_hz", 200.0);
     preview_frame_id_ = declare_parameter<std::string>("preview_frame_id", "right_rm65_base");
-    if (!std::isfinite(control_rate_hz) || control_rate_hz <= 0.0) {
-      throw std::invalid_argument("control_rate_hz must be positive and finite");
+    if (!std::isfinite(control_rate_hz) || control_rate_hz <= 0.0 ||
+      !std::isfinite(max_control_period_) || max_control_period_ <= 0.0)
+    {
+      throw std::invalid_argument("control rate and maximum period must be positive and finite");
     }
 
     const auto target_topic = declare_parameter<std::string>("target_topic", "/quest_right_target_pose");
@@ -106,11 +118,19 @@ public:
     const auto inputs_topic = declare_parameter<std::string>("inputs_topic", "/q2r_right_hand_inputs");
     const auto robot_pose_topic = declare_parameter<std::string>(
       "robot_pose_topic", "/right/rm_driver/udp_arm_position");
+    command_topic_ = declare_parameter<std::string>(
+      "command_topic", "/right/rm_driver/movep_canfd_cmd");
+    stop_topic_ = declare_parameter<std::string>(
+      "stop_topic", "/right/rm_driver/move_stop_cmd");
 
     preview_publisher_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       "/right/rm65_teleop/preview_target_pose", 10);
     status_publisher_ = create_publisher<std_msgs::msg::String>(
       "/right/rm65_teleop/status", 10);
+    if (hardware_mode_) {
+      command_publisher_ = create_publisher<rm_ros_interfaces::msg::Cartepos>(command_topic_, 10);
+      stop_publisher_ = create_publisher<std_msgs::msg::Empty>(stop_topic_, 10);
+    }
 
     target_subscription_ = create_subscription<geometry_msgs::msg::PoseStamped>(
       target_topic, 10, [this](geometry_msgs::msg::PoseStamped::SharedPtr message) {
@@ -153,18 +173,37 @@ public:
     last_cycle_time_ = SteadyClock::now();
     last_status_time_ = last_cycle_time_;
     control_timer_ = create_wall_timer(period, std::bind(&AdapterNode::control_cycle, this));
-    RCLCPP_INFO(get_logger(),
-      "Dry-run adapter started: no RM65 command publisher exists; mapping_verified=%s",
-      mapping_verified_ ? "true" : "false");
+    RCLCPP_INFO(get_logger(), "Adapter started: mode=%s mapping_verified=%s",
+      hardware_mode_ ? "HARDWARE" : "DRY_RUN", mapping_verified_ ? "true" : "false");
+  }
+
+  ~AdapterNode() override
+  {
+    if (hardware_mode_ && logic_ && logic_->state() == AdapterState::ACTIVE) publish_stop();
   }
 
 private:
+  bool command_path_ready() const
+  {
+    if (!hardware_mode_) return true;
+    return command_publisher_->get_subscription_count() == 1 &&
+           stop_publisher_->get_subscription_count() == 1 &&
+           count_publishers(command_topic_) == 1;
+  }
+
+  void publish_stop()
+  {
+    if (!stop_publisher_) return;
+    const int repeat = std::max(1, stop_repeat_count_);
+    for (int i = 0; i < repeat; ++i) stop_publisher_->publish(std_msgs::msg::Empty{});
+  }
+
   void control_cycle()
   {
     const auto now = SteadyClock::now();
     const double dt = std::chrono::duration<double>(now - last_cycle_time_).count();
     last_cycle_time_ = now;
-    max_cycle_period_ = std::max(max_cycle_period_, dt);
+    max_cycle_period_seen_ = std::max(max_cycle_period_seen_, dt);
 
     CycleInput input;
     input.enable = button_lower_;
@@ -173,6 +212,8 @@ private:
       is_fresh(quest_pose_received_, quest_pose_time_, quest_pose_timeout_);
     input.inputs_fresh = is_fresh(inputs_received_, inputs_time_, inputs_timeout_);
     input.robot_fresh = is_fresh(robot_received_, robot_time_, robot_timeout_);
+    input.control_period_valid = !hardware_mode_ || dt <= max_control_period_;
+    input.command_path_ready = command_path_ready();
     input.dt_seconds = dt;
     if (target_received_) input.target_pose = from_ros_pose(target_pose_.pose);
     if (robot_received_) input.robot_pose = from_ros_pose(robot_pose_);
@@ -183,12 +224,19 @@ private:
       RCLCPP_INFO(get_logger(), "state %s -> %s (%s)", state_name(previous),
         state_name(output.state), output.reason.empty() ? "ok" : output.reason.c_str());
     }
+    if (output.stop_requested) publish_stop();
     if (output.command.has_value()) {
       geometry_msgs::msg::PoseStamped preview;
       preview.header.stamp = get_clock()->now();
       preview.header.frame_id = preview_frame_id_;
       preview.pose = to_ros_pose(*output.command);
       preview_publisher_->publish(preview);
+      if (hardware_mode_) {
+        rm_ros_interfaces::msg::Cartepos command;
+        command.pose = preview.pose;
+        command.follow = follow_;
+        command_publisher_->publish(command);
+      }
     }
     if (std::chrono::duration<double>(now - last_status_time_).count() >= 0.10) {
       publish_status(input, output);
@@ -203,14 +251,15 @@ private:
            << "{\"state\":\"" << state_name(output.state) << "\""
            << ",\"dry_run\":" << dry_run_
            << ",\"hardware_write_enabled\":" << hardware_write_enabled_
-           << ",\"hardware_output_available\":false"
+           << ",\"hardware_output_available\":" << hardware_mode_
            << ",\"mapping_verified\":" << mapping_verified_
            << ",\"button_lower\":" << input.enable
            << ",\"target_fresh\":" << input.target_fresh
            << ",\"quest_pose_fresh\":" << input.quest_pose_fresh
            << ",\"inputs_fresh\":" << input.inputs_fresh
            << ",\"robot_fresh\":" << input.robot_fresh
-           << ",\"max_cycle_period_ms\":" << max_cycle_period_ * 1000.0
+           << ",\"command_path_ready\":" << input.command_path_ready
+           << ",\"max_cycle_period_ms\":" << max_cycle_period_seen_ * 1000.0
            << ",\"reason\":\"" << output.reason << "\"}";
     std_msgs::msg::String status;
     status.data = stream.str();
@@ -218,12 +267,13 @@ private:
   }
 
   bool dry_run_{true}, hardware_write_enabled_{false}, mapping_verified_{false};
-  bool button_lower_{false}, target_received_{false}, target_valid_{false};
-  bool quest_pose_received_{false}, quest_pose_valid_{false}, inputs_received_{false};
-  bool robot_received_{false};
+  bool hardware_mode_{false}, follow_{true}, button_lower_{false};
+  bool target_received_{false}, target_valid_{false}, quest_pose_received_{false};
+  bool quest_pose_valid_{false}, inputs_received_{false}, robot_received_{false};
+  int stop_repeat_count_{3};
   double target_timeout_{0.20}, quest_pose_timeout_{0.20}, inputs_timeout_{0.20};
-  double robot_timeout_{0.10}, max_cycle_period_{0.0};
-  std::string preview_frame_id_;
+  double robot_timeout_{0.10}, max_control_period_{0.010}, max_cycle_period_seen_{0.0};
+  std::string preview_frame_id_, command_topic_, stop_topic_;
   geometry_msgs::msg::PoseStamped target_pose_;
   geometry_msgs::msg::Pose robot_pose_;
   SteadyClock::time_point target_time_{}, quest_pose_time_{}, inputs_time_{}, robot_time_{};
@@ -231,6 +281,8 @@ private:
   std::unique_ptr<AdapterLogic> logic_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr preview_publisher_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_publisher_;
+  rclcpp::Publisher<rm_ros_interfaces::msg::Cartepos>::SharedPtr command_publisher_;
+  rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr stop_publisher_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr target_subscription_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr quest_pose_subscription_;
   rclcpp::Subscription<quest2ros::msg::OVR2ROSInputs>::SharedPtr inputs_subscription_;

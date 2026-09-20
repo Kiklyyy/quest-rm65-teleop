@@ -95,7 +95,7 @@
 | `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `button_lower` deadman 与独立 Inputs watchdog |
 | `/right/rm_driver/udp_arm_position` | `geometry_msgs/msg/Pose` | 机器人真实末端 Pose、锚点和反馈 watchdog |
 
-### B 侧计划输出
+### B 侧输出（当前已实现）
 
 | Topic | 类型 | 条件 |
 |---|---|---|
@@ -109,10 +109,12 @@ dry-run 默认值必须为：
 ```text
 dry_run=true
 hardware_write_enabled=false
-mapping_verified=false
 ```
 
-当以上任一安全门不满足时，adapter 不得创建或使用真实运动命令发布路径。
+硬件模式必须同时显式配置 `dry_run=false`、`hardware_write_enabled=true`、
+`mapping_verified=true`。任一安全门不满足时，adapter 拒绝启动或不创建真实
+运动命令发布路径。ACTIVE 还要求命令 topic 只有 adapter 一个 publisher，且
+driver command/stop 各有且只有一个订阅端点。
 
 ## 坐标与锚定
 
@@ -122,7 +124,20 @@ A 侧已于 2026-09-20 完成真实 Quest + RViz 现场方向验证：
 Quest world: +X=前，+Y=左，+Z=上
 ```
 
-A 侧 bridge 保持 identity。B 侧配置先采用 identity 作为候选矩阵，但在 RM65 base frame 的物理 `+X/+Y/+Z` 经三个独立小位移现场确认前，必须保持 `mapping_verified=false`。
+右 RM65 base 物理方向已确认：`+X=上，+Y=后，+Z=右`。A 侧 bridge
+保持 identity，B 侧使用以下已确认矩阵：
+
+```text
+[rm_x]   [ 0  0  1] [quest_x]
+[rm_y] = [-1  0  0] [quest_y]
+[rm_z]   [ 0 -1  0] [quest_z]
+
+Quest 向前 (+X) -> RM65 -Y
+Quest 向右 (-Y) -> RM65 +Z
+Quest 向上 (+Z) -> RM65 +X
+```
+
+因此当前配置允许 `mapping_verified=true`；这不代表 Quest 真机验收已经完成。
 
 enable 上升沿同时采集：
 
@@ -173,7 +188,14 @@ driver 必须以 `/right` namespace 和右臂参数单独启动。启动 driver 
 
 因此：
 
-- 正式 adapter 优先使用 C++ 实现并监测实际发送间隔；
-- 未证明持续满足周期要求前，不得启用 Quest 真机连续控制；
+- 正式 adapter 已使用 C++ 实现并监测实际控制周期；
+- high-follow 隔离联调在当前主机负载下分别观察到 `13.48 ms` 和 `21.87 ms`
+  调度间隔，均被 `10 ms` guard 正确停止；
+- 现场操作者明确授权后，硬件配置改用已验证可工作的低跟随模式，仍保持
+  200 Hz 名义 timer，并以 `50 ms` 作为严重控制卡顿 fault；
+- 隔离 ROS 联调实测 Quest `+X 10 mm` 生成 RM65 `-Y 2.0 mm` 目标，输入断流
+  发布 3 次 stop，数据恢复不自动 ACTIVE，release→press 后才重新锚定；
 - 普通 stop 返回成功不等于零制动距离，workspace 和 watchdog 设计必须保留停止余量；
 - `emergency_stop_cmd` 是独立的控制柜急停/恢复接口，不用于普通 deadman 或 watchdog。
+- 真机 adapter 已启动并验证停留在 ARMED，但操作者未按下 deadman，故尚无
+  Quest 驱动的实际位移证据，不能标记为最终验收完成。

@@ -1,10 +1,12 @@
 rm65_teleop_adapter:
   ros__parameters:
-    dry_run: true
-    hardware_write_enabled: false
+    dry_run: false
+    hardware_write_enabled: true
     mapping_verified: true
     control_rate_hz: 200.0
-    max_control_period: 0.010
+    max_control_period: 0.050
+    follow: false
+    stop_repeat_count: 3
     mapping: [0.0, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0, -1.0, 0.0]
     translation_scale: 0.2
     target_timeout: 0.20
@@ -18,3 +20,5 @@ rm65_teleop_adapter:
     workspace_min: [-1.0, -1.0, 0.0]
     workspace_max: [1.0, 1.0, 1.5]
     preview_frame_id: right_rm65_base
+    command_topic: /right/rm_driver/movep_canfd_cmd
+    stop_topic: /right/rm_driver/move_stop_cmd

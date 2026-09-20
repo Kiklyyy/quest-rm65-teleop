@@ -22,6 +22,7 @@ struct AdapterConfig
   double translation_scale{1.0};
   double max_velocity_mps{0.01};
   double max_step_m{0.0001};
+  double max_anchor_distance_m{0.03};
   double unexpected_target_jump_m{0.10};
   std::array<double, 3> workspace_min{-1.0, -1.0, 0.0};
   std::array<double, 3> workspace_max{1.0, 1.0, 1.5};
@@ -36,6 +37,8 @@ struct CycleInput
   bool quest_pose_fresh{false};
   bool inputs_fresh{false};
   bool robot_fresh{false};
+  bool control_period_valid{true};
+  bool command_path_ready{true};
   double dt_seconds{0.0};
 };
 

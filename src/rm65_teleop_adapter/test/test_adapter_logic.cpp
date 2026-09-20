@@ -54,6 +54,7 @@ TEST(AdapterLogic, RelativeTranslationUsesAnchorsAndFixedOrientation)
   AdapterConfig config;
   config.max_velocity_mps = 10.0;
   config.max_step_m = 1.0;
+  config.max_anchor_distance_m = 1.0;
   AdapterLogic logic(config);
   auto input = fresh_input();
   input.robot_pose.orientation = {0.1, 0.2, 0.3, 0.9};
@@ -158,4 +159,62 @@ TEST(AdapterLogic, UnexpectedTargetJumpLatchesFault)
   EXPECT_TRUE(output.stop_requested);
   EXPECT_EQ(output.reason, "unexpected_target_jump");
 }
+TEST(AdapterLogic, PhysicalAxisMappingMatchesVerifiedFrames)
+{
+  AdapterConfig config;
+  config.mapping = {0.0, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0, -1.0, 0.0};
+  config.max_velocity_mps = 10.0;
+  config.max_step_m = 1.0;
+  config.max_anchor_distance_m = 1.0;
+  AdapterLogic logic(config);
+  auto input = fresh_input();
+  activate(logic, input);
+  input.target_pose.position = {0.01, 0.02, 0.03};
+  const auto output = logic.update(input);
+  ASSERT_TRUE(output.command.has_value());
+  EXPECT_NEAR(output.command->position[0], 0.43, 1e-12);
+  EXPECT_NEAR(output.command->position[1], -0.01, 1e-12);
+  EXPECT_NEAR(output.command->position[2], 0.48, 1e-12);
+}
+
+TEST(AdapterLogic, AnchorDistanceViolationLatchesFault)
+{
+  AdapterConfig config;
+  config.max_anchor_distance_m = 0.03;
+  AdapterLogic logic(config);
+  auto input = fresh_input();
+  activate(logic, input);
+  input.target_pose.position[0] = 0.031;
+  const auto output = logic.update(input);
+  EXPECT_EQ(output.state, AdapterState::FAULT);
+  EXPECT_TRUE(output.stop_requested);
+  EXPECT_EQ(output.reason, "anchor_distance_violation");
+}
+
+TEST(AdapterLogic, ControlPeriodViolationStopsActiveMotion)
+{
+  AdapterLogic logic;
+  auto input = fresh_input();
+  activate(logic, input);
+  input.control_period_valid = false;
+  const auto output = logic.update(input);
+  EXPECT_EQ(output.state, AdapterState::FAULT);
+  EXPECT_TRUE(output.stop_requested);
+  EXPECT_EQ(output.reason, "control_period_exceeded");
+}
+
+TEST(AdapterLogic, CommandPathMustBeReadyBeforeActivation)
+{
+  AdapterLogic logic;
+  auto input = fresh_input();
+  input.enable = false;
+  EXPECT_EQ(logic.update(input).state, AdapterState::ARMED);
+  input.command_path_ready = false;
+  input.enable = true;
+  const auto output = logic.update(input);
+  EXPECT_EQ(output.state, AdapterState::FAULT);
+  EXPECT_FALSE(output.command.has_value());
+  EXPECT_EQ(output.reason, "command_path_not_ready");
+}
+
 }  // namespace

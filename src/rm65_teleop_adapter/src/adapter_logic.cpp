@@ -108,6 +108,8 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
   } else if (state_ == AdapterState::ARMED) {
     if (!fresh) {
       enter_rearm(input.enable, "input_not_fresh");
+    } else if (input.enable && !input.command_path_ready) {
+      enter_fault("command_path_not_ready");
     } else if (input.enable) {
       quest_anchor_ = input.target_pose;
       robot_anchor_ = input.robot_pose;
@@ -132,6 +134,12 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
     } else if (!fresh) {
       enter_rearm(true, "input_not_fresh");
       output.stop_requested = true;
+    } else if (!input.command_path_ready) {
+      enter_fault("command_path_not_ready");
+      output.stop_requested = true;
+    } else if (!input.control_period_valid) {
+      enter_fault("control_period_exceeded");
+      output.stop_requested = true;
     } else if (!std::isfinite(input.dt_seconds) || input.dt_seconds <= 0.0) {
       enter_fault("invalid_control_period");
       output.stop_requested = true;
@@ -151,7 +159,11 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
           }
           desired.position[row] += config_.translation_scale * mapped;
         }
-        if (!inside_workspace(desired.position)) {
+        const double anchor_distance = norm3(subtract(desired.position, robot_anchor_.position));
+        if (anchor_distance > config_.max_anchor_distance_m) {
+          enter_fault("anchor_distance_violation");
+          output.stop_requested = true;
+        } else if (!inside_workspace(desired.position)) {
           enter_fault("workspace_violation");
           output.stop_requested = true;
         } else {
