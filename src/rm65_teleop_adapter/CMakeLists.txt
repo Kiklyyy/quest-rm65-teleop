@@ -36,6 +36,11 @@ if(BUILD_TESTING)
     test/test_teleop_status_logic.py
     PYTHON_EXECUTABLE /usr/bin/python3
     ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1)
+  ament_add_pytest_test(
+    test_motion_profiles
+    test/test_motion_profiles.py
+    PYTHON_EXECUTABLE /usr/bin/python3
+    ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1)
 endif()
 ament_export_include_directories(include)
 ament_export_libraries(adapter_logic)

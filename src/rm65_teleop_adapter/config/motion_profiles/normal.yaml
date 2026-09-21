@@ -1,0 +1,6 @@
+rm65_teleop_adapter:
+  ros__parameters:
+    translation_scale: 1.0
+    max_velocity_mps: 0.20
+    max_step_m: 0.00050
+    max_anchor_distance_m: 1.0

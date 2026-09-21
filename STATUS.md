@@ -13,7 +13,7 @@
 `feat/right-teleop-bringup` 已实现统一右臂遥操作 launch：默认 dry-run，统一启动 TCP endpoint、右手 target bridge、adapter、只读状态监控，并可选启动预配置 RViz。
 
 - 默认 launch 不创建 `/right/rm_driver/movep_canfd_cmd` publisher。
-- `mode:=hardware` 仍直接使用既有 `hardware.yaml` 和 adapter 的三重硬件 gate。
+- `mode:=hardware` 先加载既有 `hardware.yaml` 安全基础，再加载选定的版本化 motion profile；adapter 三重硬件 gate 不变。
 - 状态监控仅观察 Quest Pose、Inputs、target、robot feedback 和 adapter JSON，不参与控制或安全判断。
 - 控制机安装包含双臂 launch，但没有已验证的 right-only launch；通用单臂 launch 也不是右臂参数。因此本轮不自动启动 RM driver，现场仍需单独使用已验证方式启动右臂 driver。
 - 隔离控制机 worktree 中四包构建成功；adapter 的 12 项 GTest 与 8 项 pytest、Quest bridge 56 项测试通过。
@@ -34,15 +34,32 @@
 - 隔离硬件模式联调已完成，模拟 command/stop 与正式真机 topic 隔离。
 - **首次真实 Quest → 右 RM65 真机平移运动已经现场成功。**
 
-## 当前仓库默认安全参数
+## 版本化 motion profiles
 
-GitHub 已提交的 `hardware.yaml` 仍保留较保守值：
+默认始终为 `safe`。`hardware.yaml` 保留硬件安全配置，motion profile 只覆盖
+`translation_scale`、`max_velocity_mps`、`max_step_m` 和
+`max_anchor_distance_m`。
 
-- `translation_scale: 0.2`
-- `max_velocity_mps: 0.005`
-- `max_anchor_distance_m: 0.03`
+| Profile | translation_scale | max_velocity_mps | max_step_m | max_anchor_distance_m | 当前状态 |
+|---|---:|---:|---:|---:|---|
+| `safe` | 0.2 | 0.005 | 0.00005 | 0.03 | 已有真机基线参数；默认档 |
+| `normal` | 1.0 | 0.20 | 0.00050 | 1.0 | 已完成一次真实 Quest → 右 RM65 手感测试 |
+| `fast` | 0.5 | 0.040 | 0.00020 | 0.10 | experimental；未真机验证，暂不用于真实机械臂 |
 
-现场曾使用过更大的未提交参数 `0.5 / 0.010 / 0.10` 做联调；这些值不是仓库默认值，也没有自动写入 main。
+现场操作者使用真实 Quest 和真实右 RM65 测试了当前 `normal` 参数。真机能够
+正常跟随；相比旧参数，跟手性明显改善，平移幅度明显更合理。操作者认为
+`max_step_m` 增大对跟手改善最明显。XYZ 平移链路此前已经打通，并在本次测试
+中保持可用。
+
+这只是定性手感验证，并未系统测量精确速度、stopping distance、overshoot、
+长时间稳定性或 1.0 m anchor 范围的安全边界。`max_anchor_distance_m=1.0` 是
+field-tested tuning value / pending workspace and stopping-margin review，不能
+写成推荐安全边界。按 200 Hz 名义控制频率，0.0005 m 步长对应约 0.10 m/s 的
+理论步长上限；这不是实测速度。正常调度下，步长限制会先于 0.20 m/s 速度
+限制生效。
+
+`safe` 保持不变并继续作为默认档。`fast` 参数暂时保持不变，但完全没有真机
+验证，属于 experimental / not for hardware use yet，不建议启动真实机械臂。
 
 ## 尚未完成/仍需验证
 
@@ -52,7 +69,8 @@ GitHub 已提交的 `hardware.yaml` 仍保留较保守值：
 - 全部真实断流场景和长期网络抖动。
 - 真机 deadman 停止余量的系统化验收。
 - 更完整的工作空间/碰撞约束。
-- demo 参数调优与手感优化。
+- `normal` 的精确速度、overshoot、长时间稳定性和 anchor=1.0 安全边界验证。
+- `fast` 真机表现及是否应继续保留/调整。
 - 生产级安全设计。
 
 ## 当前 demo 关键链路
