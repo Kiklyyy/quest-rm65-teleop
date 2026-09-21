@@ -8,6 +8,18 @@
 
 当前结论只覆盖第一阶段右手/右臂平移 demo，不代表旋转、夹爪、左臂、双臂或完整安全验收已经完成。
 
+## V0.2 启动与观察体验
+
+`feat/right-teleop-bringup` 已实现统一右臂遥操作 launch：默认 dry-run，统一启动 TCP endpoint、右手 target bridge、adapter、只读状态监控，并可选启动预配置 RViz。
+
+- 默认 launch 不创建 `/right/rm_driver/movep_canfd_cmd` publisher。
+- `mode:=hardware` 仍直接使用既有 `hardware.yaml` 和 adapter 的三重硬件 gate。
+- 状态监控仅观察 Quest Pose、Inputs、target、robot feedback 和 adapter JSON，不参与控制或安全判断。
+- 控制机安装包含双臂 launch，但没有已验证的 right-only launch；通用单臂 launch 也不是右臂参数。因此本轮不自动启动 RM driver，现场仍需单独使用已验证方式启动右臂 driver。
+- 隔离控制机 worktree 中四包构建成功；adapter 的 12 项 GTest 与 8 项 pytest、Quest bridge 56 项测试通过。
+- dry-run smoke 观察到四个预期节点，状态监控在无 Quest/robot feedback 时稳定显示 `LOST`，硬件 command publisher 数量为 0。
+- 本轮没有启动或控制真实 RM65，也没有重新完成真机验收。
+
 ## 已完成
 
 - Quest → ROS2 TCP 真实通信。

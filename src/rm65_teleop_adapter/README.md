@@ -2,6 +2,59 @@
 
 B-side safety adapter for Quest right-hand translation to the right RealMan RM65.
 
+## Unified right-arm bringup
+
+The unified launch starts the ROS TCP endpoint, Quest right-target bridge,
+adapter, and read-only status monitor. It defaults to dry-run and does not
+create RM65 hardware command publishers.
+
+Dry-run:
+
+```bash
+ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py
+```
+
+Hardware mode:
+
+```bash
+ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py mode:=hardware
+```
+
+Hardware mode with RViz:
+
+```bash
+ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
+  mode:=hardware \
+  use_rviz:=true
+```
+
+RViz can also be used in dry-run with `mode:=dry_run use_rviz:=true`. Its
+minimal configuration uses `world` as the fixed frame and displays
+`/quest_right_target_marker` and `/quest_right_target_pose`.
+
+Available switches are `start_tcp`, `start_bridge`, `start_status`, and
+`start_rm_driver`. The first three default to `true`; `start_rm_driver`
+defaults to `false`.
+
+`start_rm_driver:=true` is intentionally unsupported and fails safely. The
+installed RM driver has a dual-arm launch and a generic single-arm launch that
+does not use the verified right-arm configuration/namespace. Until a verified
+right-only launch exists, start the right RM65 driver separately using the
+known-good site procedure before selecting `mode:=hardware`. Do not start a
+second driver when one is already running.
+
+The status monitor only observes topics; it never publishes robot state or
+commands. It prints immediately when the summary changes and otherwise about
+once per second, for example:
+
+```text
+[teleop] QUEST=OK INPUTS=OK TARGET=OK ROBOT=OK STATE=ARMED DEADMAN=OFF CMD=OK
+```
+
+Malformed or stale adapter status is shown as `STATE=UNKNOWN` rather than
+terminating the monitor. Monitor freshness is display-only and is not part of
+the adapter safety state machine.
+
 The adapter supports two explicit modes:
 
 - dry-run: preview and status only; no hardware command publishers are created;
@@ -46,6 +99,9 @@ export ROS_DOMAIN_ID=42
 ros2 launch rm65_teleop_adapter dry_run.launch.py
 ```
 
+The legacy single-node launch above remains available. Prefer the unified
+bringup command for routine Quest teleoperation setup.
+
 Simulation publishers must be remapped to test-only topics; do not inject simulated data into live Quest topics.
 
 ## Run hardware mode
@@ -56,3 +112,7 @@ and live Quest inputs have been checked:
 ```bash
 ros2 launch rm65_teleop_adapter hardware.launch.py
 ```
+
+This bringup/observability change was validated without starting or commanding
+a real RM65. It does not replace the existing hardware safety gates or a future
+on-robot acceptance run.

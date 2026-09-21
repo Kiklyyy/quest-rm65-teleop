@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-21 — Unified right-arm teleop bringup
+
+- 新增 `right_quest_teleop.launch.py`，统一启动 ROS TCP endpoint、右手 target bridge、RM65 adapter、状态监控和可选 RViz。
+- 默认仍为 `dry_run`；硬件模式继续直接加载既有 `hardware.yaml`，不绕过任何 hardware gate。
+- 新增只读 `teleop_status_monitor`，状态变化立即输出并约 1 Hz heartbeat；异常 JSON 显示 `UNKNOWN`。
+- 新增最小 RViz 配置，固定 `world` frame，并预配右手 target Marker/Pose。
+- 控制机现有安装没有已验证的 right-only RM65 launch，因此 `start_rm_driver` 默认关闭且显式请求会安全失败；不调用双臂 launch。
+- 隔离 ROS 2 Humble worktree 中四包构建成功，adapter 12 项 GTest、状态监控 8 项测试和 Quest bridge 56 项测试通过。
+- dry-run smoke 中四个预期节点正常运行，硬件命令 topic publisher 数量为 0；本轮未启动或控制真实 RM65。
+
 ## 2026-09-21 — First end-to-end Quest → RM65 translation demo
 
 - 合入 A 侧真实 Quest/RViz 验证和 B 侧 `rm65_teleop_adapter`。
