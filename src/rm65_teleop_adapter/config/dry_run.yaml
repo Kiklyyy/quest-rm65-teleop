@@ -1,0 +1,20 @@
+rm65_teleop_adapter:
+  ros__parameters:
+    dry_run: true
+    hardware_write_enabled: false
+    mapping_verified: true
+    control_rate_hz: 200.0
+    max_control_period: 0.010
+    mapping: [0.0, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0, -1.0, 0.0]
+    translation_scale: 0.2
+    target_timeout: 0.20
+    quest_pose_timeout: 0.20
+    inputs_timeout: 0.20
+    robot_timeout: 0.10
+    max_velocity_mps: 0.005
+    max_step_m: 0.00005
+    max_anchor_distance_m: 0.03
+    unexpected_target_jump_m: 0.10
+    workspace_min: [-1.0, -1.0, 0.0]
+    workspace_max: [1.0, 1.0, 1.5]
+    preview_frame_id: right_rm65_base
