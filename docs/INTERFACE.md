@@ -9,9 +9,9 @@
 | Topic | 类型 | 当前使用字段 |
 |---|---|---|
 | `/q2r_right_hand_pose` | `geometry_msgs/msg/PoseStamped` | `pose.position.{x,y,z}` |
-| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `button_lower` |
+| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `press_middle` |
 
-第一版忽略输入 Pose 的 header、frame、stamp 和 orientation，也不使用摇杆、扳机或 `button_upper`。
+第一版忽略输入 Pose 的 header、frame、stamp 和 orientation，也不使用摇杆、`press_index`、`button_lower` 或 `button_upper`。
 
 ### 输出
 
@@ -27,7 +27,8 @@
 - 初始 position 为 `(0.5, 0.0, 0.5)`；
 - orientation 固定为 `(0, 0, 0, 1)`；
 - `frame_id = "world"`；
-- `button_lower` 按住后按相对位移跟随，松开立即冻结，再按时以当前位置重新锚定；
+- `press_middle >= 0.60` 后按相对位移跟随，`press_middle <= 0.40` 时立即冻结，再次达到按下阈值时以当前位置重新锚定；
+- `0.40 < press_middle < 0.60` 时保持上一 deadman 状态；非有限值按 release 处理；
 - ACTIVE 下 Pose 接收间隔严格大于 0.2 秒进入 `REARM_REQUIRED`；必须先 release，再 press 才能重新授权；
 - Pose 与 Marker 由 50 Hz timer 持续发布；
 - 输出 stamp 使用当前 ROS node clock，不沿用 Quest 输入 header。
@@ -90,12 +91,14 @@ topic 名称均不属于 motion profile。dry-run 始终只加载 `dry_run.yaml`
 
 ### 第一阶段显式 enable
 
-第一阶段直接使用 `/q2r_right_hand_inputs` 的 `button_lower` 作为显式 deadman：
+第一阶段直接使用 `/q2r_right_hand_inputs` 的 `press_middle` 作为显式 deadman：
 
-- `button_lower=true` 只表示用户当前按住 deadman；
+- `press_middle >= 0.60` 将语义状态置为 pressed，`press_middle <= 0.40` 将其置为 released，中间迟滞区保持上一状态；
+- `press_middle` 为 NaN/Inf 时安全置为 released；
+- `button_lower` 不再参与右 RM65 teleop deadman，`press_index` 当前仍未使用；
 - B 侧独立检查 Inputs 接收时间、原始 Quest Pose、虚拟 target 和机器人反馈；
 - 任一路超时、非有限数据、工作空间违规或突跳都会退出 ACTIVE；
-- 数据恢复不得自动继续，必须先看到 `button_lower=false`，再由下一次 `false → true` 重新采集双锚点；
+- 数据恢复不得自动继续，必须先看到语义 deadman released，再由下一次 released → pressed 重新采集双锚点；
 - B 侧不得用 `/quest_right_target_pose` 持续刷新的 header stamp 代替原始输入 watchdog。
 
 未来如 A 侧增加聚合后的 `/quest_right_teleop_enable`，可作为可选接口另行对齐；它不是第一阶段 adapter 的前置条件。
@@ -106,7 +109,7 @@ topic 名称均不属于 motion profile。dry-run 始终只加载 `dry_run.yaml`
 |---|---|---|
 | `/quest_right_target_pose` | `geometry_msgs/msg/PoseStamped` | A 侧映射后的虚拟右手目标，只使用相对平移 |
 | `/q2r_right_hand_pose` | `geometry_msgs/msg/PoseStamped` | 独立 Quest Pose 接收 watchdog |
-| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `button_lower` deadman 与独立 Inputs watchdog |
+| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `press_middle` 迟滞 deadman 与独立 Inputs watchdog |
 | `/right/rm_driver/udp_arm_position` | `geometry_msgs/msg/Pose` | 机器人真实末端 Pose、锚点和反馈 watchdog |
 
 ### B 侧输出（已实现）

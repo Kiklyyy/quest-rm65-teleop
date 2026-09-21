@@ -24,7 +24,7 @@
 
 - Quest → ROS2 TCP 真实通信。
 - 右手虚拟 target bridge。
-- `button_lower` deadman、release freeze、无跳变 re-anchor。
+- 中指 Grip `press_middle` deadman：`>=0.60` 按下、`<=0.40` 松开、中间区保持；release freeze、无跳变 re-anchor。
 - A 侧真实 Quest + RViz 现场验收。
 - Quest 物理方向：`+X=前、+Y=左、+Z=上`。
 - RM65 物理方向：`+X=上、+Y=后、+Z=右`。
@@ -33,6 +33,14 @@
 - B 侧独立构建成功；此前报告 12 项 GTest 全部通过，`colcon test-result` 为 13 tests、0 failures。
 - 隔离硬件模式联调已完成，模拟 command/stop 与正式真机 topic 隔离。
 - **首次真实 Quest → 右 RM65 真机平移运动已经现场成功。**
+
+## 当前 deadman 输入
+
+- 来源：`/q2r_right_hand_inputs.press_middle`。
+- 按下阈值：`press_middle >= 0.60`；松开阈值：`press_middle <= 0.40`。
+- `0.40 < press_middle < 0.60` 保持上一状态；NaN/Inf 安全视为 released。
+- `button_lower` 不再控制右 RM65 teleop；`press_index` 当前仍未使用。
+- 安全状态机语义不变：release 立即退出 ACTIVE/stop，数据恢复仍必须 release → press 重新授权。
 
 ## 版本化 motion profiles
 

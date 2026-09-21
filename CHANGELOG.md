@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-21 — Middle-grip teleop deadman
+
+- 将右 RM65 teleop deadman 来源从 `/q2r_right_hand_inputs.button_lower` 切换为中指 Grip 模拟量 `/q2r_right_hand_inputs.press_middle`。
+- 加入迟滞：`press_middle >= 0.60` 为 ON，`press_middle <= 0.40` 为 OFF，中间区保持上一状态；NaN/Inf 安全置为 OFF。
+- A 侧 bridge 与 B 侧 adapter 使用同一阈值语义；`button_lower` 不再触发右臂 teleop，`press_index` 当前仍未使用。
+- 保持既有状态机、平移映射、motion profiles、运动参数、watchdog、release stop 和 release → press rearm 行为不变。
+- adapter status 改为发布 `deadman_pressed` 与 `deadman_source=press_middle`；状态监控优先读取语义字段并兼容旧 `button_lower` 数据。
+
 ## 2026-09-21 — Versioned teleop motion profiles
 
 - 将现场直接编辑 tracked `hardware.yaml` 的调速方式迁移为版本化 `safe`、`normal`、`fast` motion profiles。

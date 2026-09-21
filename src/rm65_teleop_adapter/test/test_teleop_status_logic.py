@@ -18,7 +18,8 @@ def load_logic_module():
 def adapter_payload(**overrides):
     payload = {
         "state": "ARMED",
-        "button_lower": False,
+        "deadman_pressed": False,
+        "deadman_source": "press_middle",
         "command_path_ready": True,
         "reason": "",
     }
@@ -55,7 +56,7 @@ def test_each_stream_has_independent_display_freshness():
     model.mark_stream("target", now_s=1.0)
     model.mark_stream("robot", now_s=1.0)
     model.update_adapter(
-        adapter_payload(state="REARM_REQUIRED", button_lower=True), now_s=1.0)
+        adapter_payload(state="REARM_REQUIRED", deadman_pressed=True), now_s=1.0)
 
     assert model.render(now_s=1.1) == (
         "[teleop] QUEST=LOST INPUTS=LOST TARGET=OK ROBOT=OK "
@@ -76,7 +77,8 @@ def test_malformed_adapter_json_becomes_unknown():
 def test_stale_adapter_status_becomes_unknown():
     logic = load_logic_module()
     model = logic.TeleopStatusModel(stream_timeout_s=0.5, adapter_timeout_s=0.5)
-    model.update_adapter(adapter_payload(state="ACTIVE", button_lower=True), now_s=1.0)
+    model.update_adapter(
+        adapter_payload(state="ACTIVE", deadman_pressed=True), now_s=1.0)
 
     assert model.render(now_s=1.6).endswith(
         "STATE=UNKNOWN DEADMAN=? CMD=UNKNOWN"
@@ -122,3 +124,28 @@ def test_unknown_stream_name_is_rejected():
         assert "typo" in str(error)
     else:
         raise AssertionError("unknown stream name should be rejected")
+
+
+def test_semantic_deadman_field_takes_precedence_over_legacy_button_lower():
+    logic = load_logic_module()
+    model = logic.TeleopStatusModel(stream_timeout_s=0.5, adapter_timeout_s=0.5)
+    model.update_adapter(
+        adapter_payload(deadman_pressed=False, button_lower=True), now_s=1.0)
+
+    assert model.render(now_s=1.1).endswith(
+        "STATE=ARMED DEADMAN=OFF CMD=OK"
+    )
+
+
+def test_legacy_button_lower_is_supported_as_fallback():
+    logic = load_logic_module()
+    model = logic.TeleopStatusModel(stream_timeout_s=0.5, adapter_timeout_s=0.5)
+    legacy = adapter_payload(button_lower=True)
+    legacy = json.loads(legacy)
+    legacy.pop("deadman_pressed")
+    legacy.pop("deadman_source")
+    model.update_adapter(json.dumps(legacy), now_s=1.0)
+
+    assert model.render(now_s=1.1).endswith(
+        "STATE=ARMED DEADMAN=ON CMD=OK"
+    )
