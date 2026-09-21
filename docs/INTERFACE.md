@@ -1,6 +1,6 @@
 # Interface Contract
 
-本文件区分“当前代码已经存在的接口”和“真机接入前必须新增、但目前尚不存在的接口”。不要把计划接口写成当前能力。
+本文件区分“当前代码已经存在的接口”和“计划/尚未完全验收的接口”。不要把计划接口写成当前能力。
 
 ## 当前已经存在
 
@@ -32,49 +32,32 @@
 - Pose 与 Marker 由 50 Hz timer 持续发布；
 - 输出 stamp 使用当前 ROS node clock，不沿用 Quest 输入 header。
 
+### 已完成的真实 Quest 物理方向验收
+
+现场使用真实 Quest 手柄逐轴移动并观察 `/quest_right_target_pose`：
+
+| 真实手柄运动 | Virtual target 变化 | Quest/virtual world 物理含义 |
+|---|---|---|
+| 向前 | X 增加 | `+X = 前` |
+| 向右 | Y 减少 | `+Y = 左` |
+| 向上 | Z 增加 | `+Z = 上` |
+
+真实 Quest + RViz 也已验证未按 deadman 时冻结、按住时跟随、松开后冻结，以及松开期间移动后重新按下不跳变。当前 bridge 的 identity mapping 无需为 Quest 自身修改。
+
 ## 关键安全含义
 
 > **冻结的目标仍会由 50 Hz timer 持续刷新 timestamp。不能仅根据 `/quest_right_target_pose` 的新鲜度判断 Quest 在线、deadman 正在按下或用户允许机器人运动。**
 
 其他限制：
 
-- 当前 watchdog 只监测 Pose 接收；`/q2r_right_hand_inputs` 断流尚无独立 watchdog。
-- `world` 只是虚拟观察参考系，不是已经标定的 RM65 base frame。
+- A 侧 bridge 的 watchdog 只监测 Pose；B 侧 adapter 因此独立监测 Inputs、原始 Quest Pose、虚拟 target 和机器人反馈。
+- `world` 只是虚拟观察参考系，不是 RM65 base frame。
 - 原始 Quest Pose header 不是机器人坐标依据。
-- 约 50 Hz 是虚拟目标发布频率，不是已经确认的 RM65 透传或控制周期。
-- 当前输出没有连接任何 RM65 command topic/action。
-
-## 真机联调前必须补齐，但当前尚不存在
-
-### 显式 enable / validity
-
-需要对接双方先在本文件确定一个明确的使能和有效性契约，至少能表达：
-
-- deadman 当前是否有效；
-- Pose 是否在接收 watchdog 内；
-- Inputs 是否在独立 watchdog 内；
-- 是否处于必须 release→press 的 rearm 锁定状态；
-- 坐标映射和现场控制是否已由操作者授权。
-
-在契约合并前，RM65 adapter 不得把“目标 Pose timestamp 很新”当作 enable。
-
-### RM65 adapter
-
-计划由独立包 `rm65_teleop_adapter` 实现，不修改 A 同学负责的 bridge/TCP 源码。最低安全要求：
-
-- 默认关闭真机写入；
-- 以机器人**当前实际位姿**作为启用时的目标锚点；
-- 使用经真实 Quest + RViz 和机器人坐标系共同核对的变换；
-- 不能直接执行虚拟初始值 `(0.5, 0.0, 0.5)` 或 identity 姿态；
-- 接收端有自己的独立 watchdog、停止策略、限速/限位与命令源互斥；
-- 一只机械臂同一时刻只有一套指定驱动和命令来源；
-- 任何真实控制输出都需现场操作者明确授权。
-
-以下为 B 侧基于实际 driver 源码与现场验证确认的接口；计划新增项仍明确标注为尚未实现。
+- 约 50 Hz 是虚拟目标发布频率，不是 RM65 控制周期。
 
 ## A/B 最小接口约定
 
-### 第一阶段显式 enable（当前已存在）
+### 第一阶段显式 enable
 
 第一阶段直接使用 `/q2r_right_hand_inputs` 的 `button_lower` 作为显式 deadman：
 
@@ -84,7 +67,7 @@
 - 数据恢复不得自动继续，必须先看到 `button_lower=false`，再由下一次 `false → true` 重新采集双锚点；
 - B 侧不得用 `/quest_right_target_pose` 持续刷新的 header stamp 代替原始输入 watchdog。
 
-未来如 A 侧增加聚合后的 `/quest_right_teleop_enable`，可作为可选接口另行对齐；它不是第一阶段 dry-run 和独立 B 侧 rearm 状态机的前置条件。
+未来如 A 侧增加聚合后的 `/quest_right_teleop_enable`，可作为可选接口另行对齐；它不是第一阶段 adapter 的前置条件。
 
 ### B 侧第一阶段输入
 
@@ -95,7 +78,7 @@
 | `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `button_lower` deadman 与独立 Inputs watchdog |
 | `/right/rm_driver/udp_arm_position` | `geometry_msgs/msg/Pose` | 机器人真实末端 Pose、锚点和反馈 watchdog |
 
-### B 侧输出（当前已实现）
+### B 侧输出（已实现）
 
 | Topic | 类型 | 条件 |
 |---|---|---|
@@ -104,28 +87,24 @@
 | `/right/rm_driver/movep_canfd_cmd` | `rm_ros_interfaces/msg/Cartepos` | 仅非 dry-run、硬件写入显式启用、现场映射确认且状态为 ACTIVE |
 | `/right/rm_driver/move_stop_cmd` | `std_msgs/msg/Empty` | 真机 ACTIVE 退出或 watchdog/fault 时 |
 
-dry-run 默认值必须为：
+dry-run 默认值：
 
 ```text
 dry_run=true
 hardware_write_enabled=false
 ```
 
-硬件模式必须同时显式配置 `dry_run=false`、`hardware_write_enabled=true`、
-`mapping_verified=true`。任一安全门不满足时，adapter 拒绝启动或不创建真实
-运动命令发布路径。ACTIVE 还要求命令 topic 只有 adapter 一个 publisher，且
-driver command/stop 各有且只有一个订阅端点。
+硬件模式必须同时显式配置 `dry_run=false`、`hardware_write_enabled=true`、`mapping_verified=true`。任一安全门不满足时，adapter 拒绝启动或不创建真实运动命令发布路径。ACTIVE 还要求命令 topic 只有 adapter 一个 publisher，且 driver command/stop 各有且只有一个订阅端点。
 
 ## 坐标与锚定
 
-A 侧已于 2026-09-20 完成真实 Quest + RViz 现场方向验证：
+A 侧现场验证：
 
 ```text
 Quest world: +X=前，+Y=左，+Z=上
 ```
 
-右 RM65 base 物理方向已确认：`+X=上，+Y=后，+Z=右`。A 侧 bridge
-保持 identity，B 侧使用以下已确认矩阵：
+右 RM65 base 物理方向确认：`+X=上，+Y=后，+Z=右`。B 侧使用：
 
 ```text
 [rm_x]   [ 0  0  1] [quest_x]
@@ -136,8 +115,6 @@ Quest 向前 (+X) -> RM65 -Y
 Quest 向右 (-Y) -> RM65 +Z
 Quest 向上 (+Z) -> RM65 +X
 ```
-
-因此当前配置允许 `mapping_verified=true`；这不代表 Quest 真机验收已经完成。
 
 enable 上升沿同时采集：
 
@@ -159,10 +136,8 @@ q_robot_cmd = q_robot_anchor
 要求：
 
 - 不把 Quest `world` 中的绝对 `(0.5, 0.0, 0.5)` 当作机器人坐标；
-- `R_mapping` 必须是现场验证的 Quest XYZ 到 RM65 base XYZ 的带符号轴映射；
 - 第一阶段禁止 Quest orientation、夹爪、左臂和双臂控制；
-- 每次重新授权都重新采集双锚点，恢复时不得跳变；
-- 映射确认前 `mapping_verified=false`，禁止真机写入。
+- 每次重新授权都重新采集双锚点，恢复时不得跳变。
 
 ## 已确认的右 RM65 runtime 接口
 
@@ -183,19 +158,15 @@ driver 必须以 `/right` namespace 和右臂参数单独启动。启动 driver 
 
 - 低跟随首次 `+Z 3 mm`：实际 `+3.007 mm`，普通 stop 返回 `true`；
 - 低跟随运动中 stop：停止时仍落后最后指令约 `0.5 mm`，随后继续到最后一个目标点附近；
-- 高跟随小位移 stop：停止后余量约 `0.063 mm`，明显小于低跟随；
-- 临时 Python 高跟随发送器最大发送间隔实测 `17.5 ms`，不满足厂商高跟随周期不超过 `10 ms` 的要求。
+- 高跟随小位移 stop：停止后余量约 `0.063 mm`；
+- 临时 Python 高跟随发送器最大发送间隔实测 `17.5 ms`，不满足高跟随周期不超过 `10 ms` 的要求；
+- 正式 adapter 使用 C++ 并监测实际控制周期；
+- high-follow 隔离联调观察到 `13.48 ms` 和 `21.87 ms` 调度间隔，均被 `10 ms` guard 正确停止；
+- 现场授权后硬件配置改用低跟随模式，仍保持 200 Hz 名义 timer，并以 `50 ms` 作为严重控制卡顿 fault；
+- 隔离 ROS 联调实测 Quest `+X 10 mm` 生成 RM65 `-Y 2.0 mm` 目标，输入断流发布 3 次 stop，数据恢复不自动 ACTIVE，release→press 后才重新锚定。
 
-因此：
+## 2026-09-20 首次端到端真机联调
 
-- 正式 adapter 已使用 C++ 实现并监测实际控制周期；
-- high-follow 隔离联调在当前主机负载下分别观察到 `13.48 ms` 和 `21.87 ms`
-  调度间隔，均被 `10 ms` guard 正确停止；
-- 现场操作者明确授权后，硬件配置改用已验证可工作的低跟随模式，仍保持
-  200 Hz 名义 timer，并以 `50 ms` 作为严重控制卡顿 fault；
-- 隔离 ROS 联调实测 Quest `+X 10 mm` 生成 RM65 `-Y 2.0 mm` 目标，输入断流
-  发布 3 次 stop，数据恢复不自动 ACTIVE，release→press 后才重新锚定；
-- 普通 stop 返回成功不等于零制动距离，workspace 和 watchdog 设计必须保留停止余量；
-- `emergency_stop_cmd` 是独立的控制柜急停/恢复接口，不用于普通 deadman 或 watchdog。
-- 真机 adapter 已启动并验证停留在 ARMED，但操作者未按下 deadman，故尚无
-  Quest 驱动的实际位移证据，不能标记为最终验收完成。
+现场操作者确认：真实 Quest 右手柄已经通过当前 A+B 链路驱动右 RM65 产生实际运动，说明“Quest → ROS2 → target bridge → RM65 adapter → 右 RM65”平移链路已首次端到端打通。
+
+这只证明首次真机运动链路成立；尚不等于旋转、左臂、夹爪、所有断流场景、最终停止余量或完整安全验收已完成。
