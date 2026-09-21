@@ -3,10 +3,13 @@
 ## 2026-09-21 — Versioned teleop motion profiles
 
 - 将现场直接编辑 tracked `hardware.yaml` 的调速方式迁移为版本化 `safe`、`normal`、`fast` motion profiles。
-- `safe` 保持现有安全基线并作为默认；`normal` 是待真机手感验收的第一候选；`fast` 仅实现配置，未经真机验证。
+- `safe` 保持现有安全基线并作为默认；`normal` 更新为现场真实 Quest → 右 RM65 手感测试使用的 `1.0 / 0.20 / 0.0005 / 1.0`；`fast` 仅保留实验配置，未经真机验证且暂不用于真实机械臂。
 - hardware 模式按 `hardware.yaml` → profile override 顺序加载，profile 只包含四个运动体验参数。
 - 非法 profile 会拒绝启动；dry-run 不会因 profile 选择创建硬件命令发布路径。
 - 隔离 worktree 中四包构建成功；adapter 与 Quest bridge 自动测试通过，三档 dry-run smoke 的 hardware command publisher 均为 0。
+- 真实测试确认当前 `normal` 能正常跟随，且相对旧参数明显更跟手、平移幅度更合理；操作者认为增大 `max_step_m` 的改善最明显。
+- 本次结果仅为定性手感验证，未系统量化精确速度、stopping distance、overshoot、长时间稳定性或 anchor=1.0 的安全边界。
+- 200 Hz 下 0.0005 m 步长对应约 0.10 m/s 的理论上限，这不是实测速度；1.0 m anchor 仅是 field-tested tuning value，仍待 workspace 与 stopping-margin review。
 
 ## 2026-09-21 — Unified right-arm teleop bringup
 

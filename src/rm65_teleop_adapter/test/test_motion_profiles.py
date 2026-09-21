@@ -24,10 +24,10 @@ EXPECTED_PROFILES = {
         "max_anchor_distance_m": 0.03,
     },
     "normal": {
-        "translation_scale": 0.5,
-        "max_velocity_mps": 0.020,
-        "max_step_m": 0.00010,
-        "max_anchor_distance_m": 0.10,
+        "translation_scale": 1.0,
+        "max_velocity_mps": 0.20,
+        "max_step_m": 0.00050,
+        "max_anchor_distance_m": 1.0,
     },
     "fast": {
         "translation_scale": 0.5,

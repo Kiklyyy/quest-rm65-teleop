@@ -28,8 +28,8 @@ always `safe`.
 | Profile | translation scale | max velocity | max step | max anchor distance | Status |
 |---|---:|---:|---:|---:|---|
 | `safe` | 0.2 | 0.005 m/s | 0.00005 m | 0.03 m | Default; existing real-hardware baseline parameters |
-| `normal` | 0.5 | 0.020 m/s | 0.00010 m | 0.10 m | First tuning candidate; pending real-hardware feel validation |
-| `fast` | 0.5 | 0.040 m/s | 0.00020 m | 0.10 m | Implemented / unvalidated on real hardware |
+| `normal` | 1.0 | 0.20 m/s | 0.00050 m | 1.0 m | Real Quest → right RM65 feel-tested tuning value |
+| `fast` | 0.5 | 0.040 m/s | 0.00020 m | 0.10 m | Experimental; not for hardware use yet |
 
 Hardware mode loads the safety base first and the selected motion override
 second:
@@ -51,12 +51,27 @@ ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
   mode:=hardware motion_profile:=normal
 ```
 
+The current `normal` values were tested onsite with a real Quest and the real
+right RM65. The operator reported clearly improved responsiveness and a more
+reasonable translation range, with the larger per-step limit producing the
+most noticeable improvement. This was a qualitative feel test, not a
+measurement of exact speed, stopping distance, overshoot, or long-duration
+stability.
+
+At the nominal 200 Hz control rate, the 0.0005 m step limit gives a theoretical
+upper bound of about 0.10 m/s; this is not a measured speed. The 1.0 m anchor
+radius is a field-tested tuning value pending workspace and stopping-margin
+review, not a recommended safety boundary.
+
 Fast profile:
 
 ```bash
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
   mode:=hardware motion_profile:=fast
 ```
+
+`fast` has not been tested on a real arm. It is experimental and should not be
+used to start or control real hardware yet.
 
 Omitting `motion_profile` is equivalent to `motion_profile:=safe`. An invalid
 value fails launch; it never falls back silently. In `mode:=dry_run`, the
@@ -157,6 +172,7 @@ and live Quest inputs have been checked:
 ros2 launch rm65_teleop_adapter hardware.launch.py
 ```
 
-This bringup/observability change was validated without starting or commanding
-a real RM65. It does not replace the existing hardware safety gates or a future
-on-robot acceptance run.
+The translation path and the current `normal` tuning have received qualitative
+real Quest → right RM65 testing. This does not replace the existing hardware
+safety gates or a systematic on-robot acceptance run. `fast` remains
+unvalidated and is not for real-hardware use yet.

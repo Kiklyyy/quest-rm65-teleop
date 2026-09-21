@@ -24,8 +24,8 @@ the profile override for adapter parameters and never enables hardware output.
 | Profile | translation_scale | max_velocity_mps | max_step_m | max_anchor_distance_m | Hardware status |
 |---|---:|---:|---:|---:|---|
 | `safe` | 0.2 | 0.005 | 0.00005 | 0.03 | Existing real-hardware baseline parameters |
-| `normal` | 0.5 | 0.020 | 0.00010 | 0.10 | Implemented; pending real-hardware feel validation |
-| `fast` | 0.5 | 0.040 | 0.00020 | 0.10 | Implemented / unvalidated on real hardware |
+| `normal` | 1.0 | 0.20 | 0.00050 | 1.0 | Real Quest → right RM65 feel-tested tuning value |
+| `fast` | 0.5 | 0.040 | 0.00020 | 0.10 | Experimental; not for hardware use yet |
 
 ## Automated verification
 
@@ -56,9 +56,32 @@ real RM65 driver was started and no robot command was sent.
 
 ## Hardware validation state
 
-This change has not been tested on a real arm. `normal` is the first candidate
-for the next onsite feel-validation round. `fast` is implemented but remains
-unvalidated on real hardware; it is not verified or recommended.
+An onsite operator tested `normal` with a real Quest and the real right RM65
+using:
+
+- `translation_scale: 1.0`
+- `max_velocity_mps: 0.20`
+- `max_step_m: 0.0005`
+- `max_anchor_distance_m: 1.0`
+
+The arm followed normally, and the operator reported that the new tuning was
+clearly more responsive with a substantially more reasonable translation
+range than the previous parameters. The larger `max_step_m` was considered the
+most noticeable contributor to the improved feel. XYZ translation through the
+full Quest → right RM65 path had already been established and remained
+functional during this test.
+
+At the nominal 200 Hz control rate, `max_step_m: 0.0005` gives a theoretical
+step-derived upper bound of approximately 0.10 m/s. This is a calculation, not
+a measured robot speed, and it means the step limit normally constrains motion
+before `max_velocity_mps: 0.20` does.
+
+This test did not systematically measure exact speed, stopping distance,
+overshoot, long-duration stability, or the safety boundary of the 1.0 m anchor
+radius. `max_anchor_distance_m: 1.0` is a field-tested tuning value pending
+workspace and stopping-margin review; it is not a recommended safety boundary.
+`fast` remains unvalidated on real hardware and is experimental / not for
+hardware use yet.
 
 ## Pending onsite test record
 
@@ -67,8 +90,9 @@ For each candidate profile, record:
 | Item | Result |
 |---|---|
 | Direction | Pending |
-| Feel | Pending |
+| Feel | `normal` clearly improved in one real Quest → right RM65 session |
 | Deadman stop | Pending |
 | Stopping margin | Pending |
 | Fault behavior | Pending |
-| Final conclusion | Pending |
+| Long-duration stability | Pending |
+| Final safety conclusion | Pending |

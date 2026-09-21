@@ -43,15 +43,23 @@
 | Profile | translation_scale | max_velocity_mps | max_step_m | max_anchor_distance_m | 当前状态 |
 |---|---:|---:|---:|---:|---|
 | `safe` | 0.2 | 0.005 | 0.00005 | 0.03 | 已有真机基线参数；默认档 |
-| `normal` | 0.5 | 0.020 | 0.00010 | 0.10 | 代码已实现，待本轮真机手感验收 |
-| `fast` | 0.5 | 0.040 | 0.00020 | 0.10 | 代码已实现，未真机验收 |
+| `normal` | 1.0 | 0.20 | 0.00050 | 1.0 | 已完成一次真实 Quest → 右 RM65 手感测试 |
+| `fast` | 0.5 | 0.040 | 0.00020 | 0.10 | experimental；未真机验证，暂不用于真实机械臂 |
 
-本轮只完成自动测试和隔离 dry-run smoke，没有启动或控制真实 RM65，因此
-不得把 `normal` 或 `fast` 描述为已验证或推荐档位。
+现场操作者使用真实 Quest 和真实右 RM65 测试了当前 `normal` 参数。真机能够
+正常跟随；相比旧参数，跟手性明显改善，平移幅度明显更合理。操作者认为
+`max_step_m` 增大对跟手改善最明显。XYZ 平移链路此前已经打通，并在本次测试
+中保持可用。
 
-现场曾使用过更大的未提交参数 `0.5 / 0.010 / 0.10` 做联调；这些值没有被
-复制为 shared default。现在切换运动体验参数应选择版本化 profile，不再直接
-编辑 tracked `hardware.yaml`。
+这只是定性手感验证，并未系统测量精确速度、stopping distance、overshoot、
+长时间稳定性或 1.0 m anchor 范围的安全边界。`max_anchor_distance_m=1.0` 是
+field-tested tuning value / pending workspace and stopping-margin review，不能
+写成推荐安全边界。按 200 Hz 名义控制频率，0.0005 m 步长对应约 0.10 m/s 的
+理论步长上限；这不是实测速度。正常调度下，步长限制会先于 0.20 m/s 速度
+限制生效。
+
+`safe` 保持不变并继续作为默认档。`fast` 参数暂时保持不变，但完全没有真机
+验证，属于 experimental / not for hardware use yet，不建议启动真实机械臂。
 
 ## 尚未完成/仍需验证
 
@@ -61,7 +69,8 @@
 - 全部真实断流场景和长期网络抖动。
 - 真机 deadman 停止余量的系统化验收。
 - 更完整的工作空间/碰撞约束。
-- demo 参数调优与手感优化。
+- `normal` 的精确速度、overshoot、长时间稳定性和 anchor=1.0 安全边界验证。
+- `fast` 真机表现及是否应继续保留/调整。
 - 生产级安全设计。
 
 ## 当前 demo 关键链路
