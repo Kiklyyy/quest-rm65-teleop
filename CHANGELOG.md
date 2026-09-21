@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-21 — Versioned teleop motion profiles
+
+- 将现场直接编辑 tracked `hardware.yaml` 的调速方式迁移为版本化 `safe`、`normal`、`fast` motion profiles。
+- `safe` 保持现有安全基线并作为默认；`normal` 是待真机手感验收的第一候选；`fast` 仅实现配置，未经真机验证。
+- hardware 模式按 `hardware.yaml` → profile override 顺序加载，profile 只包含四个运动体验参数。
+- 非法 profile 会拒绝启动；dry-run 不会因 profile 选择创建硬件命令发布路径。
+- 隔离 worktree 中四包构建成功；adapter 与 Quest bridge 自动测试通过，三档 dry-run smoke 的 hardware command publisher 均为 0。
+
 ## 2026-09-21 — Unified right-arm teleop bringup
 
 - 新增 `right_quest_teleop.launch.py`，统一启动 ROS TCP endpoint、右手 target bridge、RM65 adapter、状态监控和可选 RViz。

@@ -13,7 +13,7 @@
 `feat/right-teleop-bringup` 已实现统一右臂遥操作 launch：默认 dry-run，统一启动 TCP endpoint、右手 target bridge、adapter、只读状态监控，并可选启动预配置 RViz。
 
 - 默认 launch 不创建 `/right/rm_driver/movep_canfd_cmd` publisher。
-- `mode:=hardware` 仍直接使用既有 `hardware.yaml` 和 adapter 的三重硬件 gate。
+- `mode:=hardware` 先加载既有 `hardware.yaml` 安全基础，再加载选定的版本化 motion profile；adapter 三重硬件 gate 不变。
 - 状态监控仅观察 Quest Pose、Inputs、target、robot feedback 和 adapter JSON，不参与控制或安全判断。
 - 控制机安装包含双臂 launch，但没有已验证的 right-only launch；通用单臂 launch 也不是右臂参数。因此本轮不自动启动 RM driver，现场仍需单独使用已验证方式启动右臂 driver。
 - 隔离控制机 worktree 中四包构建成功；adapter 的 12 项 GTest 与 8 项 pytest、Quest bridge 56 项测试通过。
@@ -34,15 +34,24 @@
 - 隔离硬件模式联调已完成，模拟 command/stop 与正式真机 topic 隔离。
 - **首次真实 Quest → 右 RM65 真机平移运动已经现场成功。**
 
-## 当前仓库默认安全参数
+## 版本化 motion profiles
 
-GitHub 已提交的 `hardware.yaml` 仍保留较保守值：
+默认始终为 `safe`。`hardware.yaml` 保留硬件安全配置，motion profile 只覆盖
+`translation_scale`、`max_velocity_mps`、`max_step_m` 和
+`max_anchor_distance_m`。
 
-- `translation_scale: 0.2`
-- `max_velocity_mps: 0.005`
-- `max_anchor_distance_m: 0.03`
+| Profile | translation_scale | max_velocity_mps | max_step_m | max_anchor_distance_m | 当前状态 |
+|---|---:|---:|---:|---:|---|
+| `safe` | 0.2 | 0.005 | 0.00005 | 0.03 | 已有真机基线参数；默认档 |
+| `normal` | 0.5 | 0.020 | 0.00010 | 0.10 | 代码已实现，待本轮真机手感验收 |
+| `fast` | 0.5 | 0.040 | 0.00020 | 0.10 | 代码已实现，未真机验收 |
 
-现场曾使用过更大的未提交参数 `0.5 / 0.010 / 0.10` 做联调；这些值不是仓库默认值，也没有自动写入 main。
+本轮只完成自动测试和隔离 dry-run smoke，没有启动或控制真实 RM65，因此
+不得把 `normal` 或 `fast` 描述为已验证或推荐档位。
+
+现场曾使用过更大的未提交参数 `0.5 / 0.010 / 0.10` 做联调；这些值没有被
+复制为 shared default。现在切换运动体验参数应选择版本化 profile，不再直接
+编辑 tracked `hardware.yaml`。
 
 ## 尚未完成/仍需验证
 

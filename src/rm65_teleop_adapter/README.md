@@ -20,6 +20,49 @@ Hardware mode:
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py mode:=hardware
 ```
 
+## Motion profiles
+
+The unified launch accepts `motion_profile:=safe|normal|fast`. The default is
+always `safe`.
+
+| Profile | translation scale | max velocity | max step | max anchor distance | Status |
+|---|---:|---:|---:|---:|---|
+| `safe` | 0.2 | 0.005 m/s | 0.00005 m | 0.03 m | Default; existing real-hardware baseline parameters |
+| `normal` | 0.5 | 0.020 m/s | 0.00010 m | 0.10 m | First tuning candidate; pending real-hardware feel validation |
+| `fast` | 0.5 | 0.040 m/s | 0.00020 m | 0.10 m | Implemented / unvalidated on real hardware |
+
+Hardware mode loads the safety base first and the selected motion override
+second:
+
+```text
+config/hardware.yaml
++ config/motion_profiles/<motion_profile>.yaml
+```
+
+Motion profiles can override only `translation_scale`, `max_velocity_mps`,
+`max_step_m`, and `max_anchor_distance_m`. Hardware gates, mapping, watchdogs,
+workspace, control timing, follow/stop behavior, and topic names remain in
+`hardware.yaml`.
+
+Normal profile:
+
+```bash
+ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
+  mode:=hardware motion_profile:=normal
+```
+
+Fast profile:
+
+```bash
+ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
+  mode:=hardware motion_profile:=fast
+```
+
+Omitting `motion_profile` is equivalent to `motion_profile:=safe`. An invalid
+value fails launch; it never falls back silently. In `mode:=dry_run`, the
+adapter continues to load only `dry_run.yaml`, regardless of the selected
+motion profile, and does not create hardware command publishers.
+
 Hardware mode with RViz:
 
 ```bash
@@ -77,9 +120,10 @@ Quest +Z up      -> RM65 +X
 
 Commands are relative to double anchors. Quest absolute position and orientation
 are never sent to the robot; phase 1 keeps the robot anchor orientation fixed.
-The checked-in hardware profile uses `follow=false`, a nominal 200 Hz timer,
-5 mm/s velocity limit, 0.05 mm per-step limit, 3 cm anchor radius, and a 50 ms
-control-stall fault. Dry-run remains the default launch mode.
+The checked-in hardware base uses `follow=false`, a nominal 200 Hz timer, and a
+50 ms control-stall fault. The default `safe` motion profile adds the 5 mm/s
+velocity limit, 0.05 mm per-step limit, and 3 cm anchor radius. Dry-run remains
+the default launch mode.
 
 ## Build and test
 

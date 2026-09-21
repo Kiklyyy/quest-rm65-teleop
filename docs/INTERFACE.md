@@ -44,6 +44,37 @@
 
 真实 Quest + RViz 也已验证未按 deadman 时冻结、按住时跟随、松开后冻结，以及松开期间移动后重新按下不跳变。当前 bridge 的 identity mapping 无需为 Quest 自身修改。
 
+## Unified launch 参数契约
+
+统一入口 `right_quest_teleop.launch.py` 提供：
+
+```text
+mode:=dry_run|hardware
+motion_profile:=safe|normal|fast
+```
+
+`motion_profile` 默认值为 `safe`。非法值必须拒绝启动，不得静默回退到
+`safe`。
+
+hardware 模式按以下顺序加载 ROS 2 参数文件：
+
+```text
+hardware.yaml
++ motion_profiles/<motion_profile>.yaml
+```
+
+后加载的 motion profile 只能覆盖：
+
+- `translation_scale`
+- `max_velocity_mps`
+- `max_step_m`
+- `max_anchor_distance_m`
+
+hardware gate、mapping、watchdog、workspace、控制周期、follow、stop 行为和
+topic 名称均不属于 motion profile。dry-run 始终只加载 `dry_run.yaml`；指定
+`motion_profile:=normal` 或 `fast` 不会启用硬件写入路径。launch 日志会显示
+当前 `mode` 和 `motion_profile`。
+
 ## 关键安全含义
 
 > **冻结的目标仍会由 50 Hz timer 持续刷新 timestamp。不能仅根据 `/quest_right_target_pose` 的新鲜度判断 Quest 在线、deadman 正在按下或用户允许机器人运动。**
