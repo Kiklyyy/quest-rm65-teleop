@@ -18,14 +18,24 @@ add_executable(rm65_teleop_adapter_node src/adapter_node.cpp)
 target_link_libraries(rm65_teleop_adapter_node adapter_logic)
 ament_target_dependencies(rm65_teleop_adapter_node geometry_msgs quest2ros rclcpp rm_ros_interfaces std_msgs std_srvs)
 install(TARGETS adapter_logic rm65_teleop_adapter_node ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS scripts/teleop_status_monitor.py DESTINATION lib/${PROJECT_NAME} RENAME teleop_status_monitor)
+install(FILES scripts/teleop_status_logic.py DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
 install(FILES README.md DESTINATION share/${PROJECT_NAME})
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
   ament_add_gtest(test_adapter_logic test/test_adapter_logic.cpp)
   target_link_libraries(test_adapter_logic adapter_logic)
   target_include_directories(test_adapter_logic PRIVATE include)
+  # Ignore incompatible user-site pytest plugins on the ROS 2 Humble host.
+  set(ENV{PYTEST_DISABLE_PLUGIN_AUTOLOAD} "1")
+  ament_add_pytest_test(
+    test_teleop_status_logic
+    test/test_teleop_status_logic.py
+    PYTHON_EXECUTABLE /usr/bin/python3
+    ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1)
 endif()
 ament_export_include_directories(include)
 ament_export_libraries(adapter_logic)
