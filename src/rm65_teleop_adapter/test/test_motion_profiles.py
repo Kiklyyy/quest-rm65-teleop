@@ -110,3 +110,5 @@ def test_profile_contains_only_allowed_motion_parameters(profile):
         document = yaml.safe_load(stream)
 
     parameters = document["rm65_teleop_adapter"]["ros__parameters"]
+    assert set(parameters) == ALLOWED_PROFILE_KEYS
+    assert parameters == EXPECTED_PROFILES[profile]

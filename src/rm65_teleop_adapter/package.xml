@@ -13,5 +13,6 @@
   <exec_depend>ros_tcp_endpoint</exec_depend><exec_depend>rviz2</exec_depend>
   <depend>rm_ros_interfaces</depend><depend>std_msgs</depend><depend>std_srvs</depend>
   <test_depend>ament_cmake_gtest</test_depend><test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>python3-yaml</test_depend>
   <export><build_type>ament_cmake</build_type></export>
 </package>
