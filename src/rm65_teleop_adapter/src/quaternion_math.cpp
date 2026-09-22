@@ -119,8 +119,10 @@ QuaternionXyzw align_quaternion_hemisphere(
 double shortest_angular_distance(
   const QuaternionXyzw & from, const QuaternionXyzw & to)
 {
-  const double absolute_dot = std::abs(quaternion_dot(from, to));
-  return 2.0 * std::acos(std::clamp(absolute_dot, 0.0, 1.0));
+  const auto relative = hamilton_product(to, inverse_unit_quaternion(from));
+  const double vector_norm = std::hypot(relative.x, relative.y, relative.z);
+  return 2.0 * std::atan2(
+    vector_norm, std::clamp(std::abs(relative.w), 0.0, 1.0));
 }
 
 QuaternionXyzw slerp_shortest(
