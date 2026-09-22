@@ -41,10 +41,10 @@ geometry_msgs::msg::Pose to_ros_pose(const Pose3 & pose)
   result.position.x = pose.position[0];
   result.position.y = pose.position[1];
   result.position.z = pose.position[2];
-  result.orientation.x = pose.orientation[0];
-  result.orientation.y = pose.orientation[1];
-  result.orientation.z = pose.orientation[2];
-  result.orientation.w = pose.orientation[3];
+  result.orientation.x = pose.orientation.x;
+  result.orientation.y = pose.orientation.y;
+  result.orientation.z = pose.orientation.z;
+  result.orientation.w = pose.orientation.w;
   return result;
 }
 

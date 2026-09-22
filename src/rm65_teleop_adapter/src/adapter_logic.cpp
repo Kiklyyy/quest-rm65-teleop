@@ -34,18 +34,14 @@ AdapterLogic::AdapterLogic(AdapterConfig config) : config_(std::move(config)) {}
 
 bool AdapterLogic::all_fresh(const CycleInput & input) const
 {
-  return input.target_fresh && input.quest_pose_fresh && input.inputs_fresh && input.robot_fresh;
+  return input.target_fresh && input.quest_pose_fresh && input.inputs_fresh &&
+         input.robot_fresh && input.quest_orientation_valid && input.robot_orientation_valid;
 }
 
 bool AdapterLogic::pose_is_finite(const Pose3 & pose) const
 {
   for (const double value : pose.position) if (!std::isfinite(value)) return false;
-  double norm_squared = 0.0;
-  for (const double value : pose.orientation) {
-    if (!std::isfinite(value)) return false;
-    norm_squared += value * value;
-  }
-  return norm_squared > 0.5 && norm_squared < 1.5;
+  return normalize_quaternion(pose.orientation).has_value();
 }
 
 bool AdapterLogic::inside_workspace(const std::array<double, 3> & point) const
@@ -111,8 +107,17 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
     } else if (input.enable && !input.command_path_ready) {
       enter_fault("command_path_not_ready");
     } else if (input.enable) {
+      const auto normalized_robot = normalize_quaternion(input.robot_pose.orientation);
+      if (!normalized_robot) {
+        enter_fault("invalid_robot_orientation");
+        output.state = state_;
+        output.reason = fault_reason_;
+        return output;
+      }
       quest_anchor_ = input.target_pose;
+      quest_orientation_anchor_ = input.quest_orientation;
       robot_anchor_ = input.robot_pose;
+      robot_anchor_.orientation = *normalized_robot;
       last_command_ = robot_anchor_;
       last_target_ = input.target_pose;
       state_ = AdapterState::ACTIVE;
@@ -159,6 +164,13 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
           }
           desired.position[row] += config_.translation_scale * mapped;
         }
+        const auto delta_q = relative_world_rotation(
+          input.quest_orientation, quest_orientation_anchor_);
+        const auto scaled_delta_q = scale_shortest_rotation(delta_q, config_.rotation_scale);
+        const auto mapped_delta_q = map_relative_rotation(scaled_delta_q, config_.mapping);
+        desired.orientation = compose_world_relative_rotation(
+          mapped_delta_q, robot_anchor_.orientation);
+
         const double anchor_distance = norm3(subtract(desired.position, robot_anchor_.position));
         if (anchor_distance > config_.max_anchor_distance_m) {
           enter_fault("anchor_distance_violation");
@@ -175,8 +187,23 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
             output.stop_requested = true;
           } else {
             const double ratio = distance > allowed ? allowed / distance : 1.0;
-            for (std::size_t i = 0; i < 3; ++i) last_command_.position[i] += command_delta[i] * ratio;
-            last_command_.orientation = robot_anchor_.orientation;
+            Pose3 next_command = last_command_;
+            for (std::size_t i = 0; i < 3; ++i) {
+              next_command.position[i] += command_delta[i] * ratio;
+            }
+            const double angular_distance = shortest_angular_distance(
+              last_command_.orientation, desired.orientation);
+            const double allowed_angle = std::min(
+              config_.max_angular_step_rad,
+              config_.max_angular_velocity_rad_s * input.dt_seconds);
+            if (angular_distance <= allowed_angle) {
+              next_command.orientation = desired.orientation;
+            } else {
+              next_command.orientation = slerp_shortest(
+                last_command_.orientation, desired.orientation,
+                allowed_angle / angular_distance);
+            }
+            last_command_ = next_command;
             output.command = last_command_;
           }
         }

@@ -25,7 +25,13 @@ CycleInput fresh_input()
   input.inputs_fresh = true;
   input.robot_fresh = true;
   input.dt_seconds = 0.01;
+  input.quest_orientation = rm65_teleop_adapter::QuaternionXyzw{0.0, 0.0, 0.0, 1.0};
+  input.quest_orientation_valid = true;
+  input.robot_orientation_valid = true;
+  input.quest_orientation_status = rm65_teleop_adapter::OrientationSampleStatus::VALID;
+  input.quest_orientation_jump_rad = 0.0;
   input.robot_pose.position = {0.4, 0.0, 0.5};
+  input.robot_pose.orientation = rm65_teleop_adapter::QuaternionXyzw{0.0, 0.0, 0.0, 1.0};
   return input;
 }
 
