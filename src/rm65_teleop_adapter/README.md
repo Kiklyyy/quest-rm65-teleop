@@ -119,11 +119,22 @@ The adapter supports two explicit modes:
 - hardware: requires `dry_run=false`, `hardware_write_enabled=true`, and
   `mapping_verified=true` before command publishers are created.
 
-The first-stage enable source is `/q2r_right_hand_inputs.button_lower`. The
-adapter independently watches target, raw Quest Pose, Inputs, robot feedback,
-command-path uniqueness, and control-cycle timing. Release or any timeout stops
-new CANFD points, publishes repeated `move_stop_cmd`, and requires a fresh
-release-to-press sequence with new Quest and robot anchors.
+The first-stage enable source is `/q2r_right_hand_inputs.press_middle`. The
+middle-grip analog value uses hysteresis: values at or above `0.60` turn the
+deadman on, values at or below `0.40` turn it off, and values strictly between
+the thresholds preserve the previous state. NaN or infinite values safely turn
+the deadman off. `button_lower` no longer controls right-arm teleoperation, and
+`press_index` remains unused.
+
+The adapter status JSON publishes `deadman_pressed` and
+`deadman_source="press_middle"`. The read-only monitor displays this semantic
+state as `DEADMAN=ON/OFF` and accepts legacy `button_lower` status only as a
+fallback for old adapter data.
+
+The adapter independently watches target, raw Quest Pose, Inputs, robot
+feedback, command-path uniqueness, and control-cycle timing. Release or any
+timeout stops new CANFD points, publishes repeated `move_stop_cmd`, and requires
+a fresh release-to-press sequence with new Quest and robot anchors.
 
 The field-verified physical mapping is:
 

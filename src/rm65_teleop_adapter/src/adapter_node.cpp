@@ -1,4 +1,5 @@
 #include "rm65_teleop_adapter/adapter_logic.hpp"
+#include "rm65_teleop_adapter/quest_input_deadman.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -147,7 +148,7 @@ public:
       });
     inputs_subscription_ = create_subscription<quest2ros::msg::OVR2ROSInputs>(
       inputs_topic, 10, [this](quest2ros::msg::OVR2ROSInputs::SharedPtr message) {
-        button_lower_ = message->button_lower;
+        deadman_pressed_ = input_deadman_.update(*message);
         inputs_received_ = true;
         inputs_time_ = SteadyClock::now();
       });
@@ -162,10 +163,10 @@ public:
       "/right/rm65_teleop/clear_fault",
       [this](const std_srvs::srv::Trigger::Request::SharedPtr,
         std_srvs::srv::Trigger::Response::SharedPtr response) {
-        response->success = logic_->clear_fault(button_lower_);
+        response->success = logic_->clear_fault(deadman_pressed_);
         response->message = response->success ?
           "fault cleared; release-to-press rearm still required" :
-          "clear rejected: no fault or button_lower is pressed";
+          "clear rejected: no fault or deadman is pressed";
       });
 
     const auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -206,7 +207,7 @@ private:
     max_cycle_period_seen_ = std::max(max_cycle_period_seen_, dt);
 
     CycleInput input;
-    input.enable = button_lower_;
+    input.enable = deadman_pressed_;
     input.target_fresh = target_valid_ && is_fresh(target_received_, target_time_, target_timeout_);
     input.quest_pose_fresh = quest_pose_valid_ &&
       is_fresh(quest_pose_received_, quest_pose_time_, quest_pose_timeout_);
@@ -253,7 +254,8 @@ private:
            << ",\"hardware_write_enabled\":" << hardware_write_enabled_
            << ",\"hardware_output_available\":" << hardware_mode_
            << ",\"mapping_verified\":" << mapping_verified_
-           << ",\"button_lower\":" << input.enable
+           << ",\"deadman_pressed\":" << input.enable
+           << ",\"deadman_source\":\"press_middle\""
            << ",\"target_fresh\":" << input.target_fresh
            << ",\"quest_pose_fresh\":" << input.quest_pose_fresh
            << ",\"inputs_fresh\":" << input.inputs_fresh
@@ -267,7 +269,7 @@ private:
   }
 
   bool dry_run_{true}, hardware_write_enabled_{false}, mapping_verified_{false};
-  bool hardware_mode_{false}, follow_{true}, button_lower_{false};
+  bool hardware_mode_{false}, follow_{true}, deadman_pressed_{false};
   bool target_received_{false}, target_valid_{false}, quest_pose_received_{false};
   bool quest_pose_valid_{false}, inputs_received_{false}, robot_received_{false};
   int stop_repeat_count_{3};
@@ -279,6 +281,7 @@ private:
   SteadyClock::time_point target_time_{}, quest_pose_time_{}, inputs_time_{}, robot_time_{};
   SteadyClock::time_point last_cycle_time_{}, last_status_time_{};
   std::unique_ptr<AdapterLogic> logic_;
+  QuestInputDeadman input_deadman_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr preview_publisher_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_publisher_;
   rclcpp::Publisher<rm_ros_interfaces::msg::Cartepos>::SharedPtr command_publisher_;

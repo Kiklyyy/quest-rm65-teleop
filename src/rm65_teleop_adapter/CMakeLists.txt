@@ -29,6 +29,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_adapter_logic test/test_adapter_logic.cpp)
   target_link_libraries(test_adapter_logic adapter_logic)
   target_include_directories(test_adapter_logic PRIVATE include)
+  ament_add_gtest(test_input_deadman test/test_input_deadman.cpp)
+  target_link_libraries(test_input_deadman adapter_logic)
+  target_include_directories(test_input_deadman PRIVATE include)
   # Ignore incompatible user-site pytest plugins on the ROS 2 Humble host.
   set(ENV{PYTEST_DISABLE_PLUGIN_AUTOLOAD} "1")
   ament_add_pytest_test(

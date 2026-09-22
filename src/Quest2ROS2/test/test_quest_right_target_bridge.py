@@ -1,4 +1,5 @@
 import inspect
+import struct
 from pathlib import Path
 from unittest.mock import Mock, call, patch
 
@@ -93,20 +94,106 @@ def test_pose_callback_passes_only_xyz_and_monotonic_time():
     assert "orientation" not in source
 
 
-def test_inputs_callback_passes_only_button_lower_and_monotonic_time():
+def make_bridge_for_inputs_callback() -> QuestRightTargetBridge:
     bridge = QuestRightTargetBridge.__new__(QuestRightTargetBridge)
     bridge._logic = Mock()
+    bridge._deadman_pressed = False
+    return bridge
+
+
+def send_inputs(
+    bridge: QuestRightTargetBridge,
+    press_middle: float,
+    now_s: float,
+    *,
+    button_lower: bool = False,
+) -> None:
     message = OVR2ROSInputs()
-    message.button_lower, message.button_upper = True, True
-    message.thumb_stick_horizontal, message.press_index = 0.75, 1.0
-    with patch("q2r2_bringup.quest_right_target_bridge.time.monotonic", return_value=11.0):
+    message.press_middle = press_middle
+    message.button_lower = button_lower
+    with patch(
+        "q2r2_bringup.quest_right_target_bridge.time.monotonic",
+        return_value=now_s,
+    ):
         bridge._inputs_callback(message)
-    bridge._logic.update_deadman.assert_called_once_with(True, 11.0)
+
+
+def test_middle_grip_press_threshold_activates_deadman():
+    bridge = make_bridge_for_inputs_callback()
+
+    send_inputs(bridge, 0.0, 10.0)
+    send_inputs(bridge, 0.60, 11.0)
+    send_inputs(bridge, 1.0, 12.0)
+
+    assert bridge._logic.update_deadman.call_args_list == [
+        call(False, 10.0),
+        call(True, 11.0),
+        call(True, 12.0),
+    ]
+
+
+def test_middle_grip_pressed_state_holds_until_release_threshold():
+    bridge = make_bridge_for_inputs_callback()
+
+    for index, value in enumerate((0.60, 0.59, 0.50, 0.41, 0.40)):
+        send_inputs(bridge, value, 20.0 + index)
+
+    assert [item.args[0] for item in bridge._logic.update_deadman.call_args_list] == [
+        True,
+        True,
+        True,
+        True,
+        False,
+    ]
+
+
+def test_float32_wire_value_at_release_threshold_releases():
+    bridge = make_bridge_for_inputs_callback()
+    wire_press = struct.unpack("f", struct.pack("f", 0.60))[0]
+    wire_release = struct.unpack("f", struct.pack("f", 0.40))[0]
+    send_inputs(bridge, wire_press, 25.0)
+
+    send_inputs(bridge, wire_release, 26.0)
+
+    assert bridge._logic.update_deadman.call_args_list[-1] == call(False, 26.0)
+
+
+def test_middle_grip_released_state_holds_below_press_threshold():
+    bridge = make_bridge_for_inputs_callback()
+
+    for index, value in enumerate((0.0, 0.41, 0.50, 0.59)):
+        send_inputs(bridge, value, 30.0 + index)
+
+    assert [item.args[0] for item in bridge._logic.update_deadman.call_args_list] == [
+        False,
+        False,
+        False,
+        False,
+    ]
+
+
+def test_button_lower_cannot_activate_deadman():
+    bridge = make_bridge_for_inputs_callback()
+
+    send_inputs(bridge, 0.0, 40.0, button_lower=True)
+
+    bridge._logic.update_deadman.assert_called_once_with(False, 40.0)
     source = inspect.getsource(QuestRightTargetBridge._inputs_callback)
+    assert "button_lower" not in source
     assert "button_upper" not in source
     assert "thumb_stick" not in source
     assert "press_index" not in source
-    assert "press_middle" not in source
+    assert "press_middle" in source
+
+
+@pytest.mark.parametrize("non_finite", (float("nan"), float("inf"), float("-inf")))
+def test_nonfinite_middle_grip_safely_releases_deadman(non_finite):
+    bridge = make_bridge_for_inputs_callback()
+    send_inputs(bridge, 0.60, 50.0)
+
+    send_inputs(bridge, non_finite, 51.0)
+
+    assert bridge._logic.update_deadman.call_args_list[-1] == call(False, 51.0)
 
 
 def test_timer_checks_watchdog_and_continuously_publishes_same_target():

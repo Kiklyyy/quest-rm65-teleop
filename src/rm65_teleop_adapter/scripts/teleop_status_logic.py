@@ -53,14 +53,16 @@ class TeleopStatusModel:
             return
 
         state = decoded.get("state")
-        button_lower = decoded.get("button_lower")
+        deadman_pressed = decoded.get("deadman_pressed")
+        if not isinstance(deadman_pressed, bool):
+            deadman_pressed = decoded.get("button_lower")
         command_path_ready = decoded.get("command_path_ready")
         reason = decoded.get("reason")
         self._adapter = {
             "state": state if isinstance(state, str) and state else "UNKNOWN",
             "deadman": (
-                "ON" if button_lower is True else
-                "OFF" if button_lower is False else "?"
+                "ON" if deadman_pressed is True else
+                "OFF" if deadman_pressed is False else "?"
             ),
             "command": (
                 "OK" if command_path_ready is True else
