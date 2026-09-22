@@ -418,4 +418,185 @@ TEST(AdapterLogic, SmallerAngularLimitWins)
   EXPECT_NEAR(commanded_angle(0.05, 0.01), 0.005, 1e-10);
 }
 
+TEST(AdapterLogic, InvalidQuestOrientationFaultsStopsAndEmitsNoCommand)
+{
+  AdapterLogic logic;
+  auto input = fresh_input();
+  activate(logic, input);
+  input.quest_orientation_valid = false;
+  input.quest_orientation_status = OrientationSampleStatus::INVALID;
+  const auto output = logic.update(input);
+  EXPECT_EQ(output.state, AdapterState::FAULT);
+  EXPECT_EQ(output.reason, "invalid_quest_orientation");
+  EXPECT_TRUE(output.stop_requested);
+  EXPECT_FALSE(output.command.has_value());
+}
+
+TEST(AdapterLogic, UnexpectedOrientationJumpFaultsStopsAndEmitsNoCommand)
+{
+  AdapterConfig config;
+  AdapterLogic logic(config);
+  auto input = fresh_input();
+  activate(logic, input);
+  input.quest_orientation_status = OrientationSampleStatus::UNEXPECTED_JUMP;
+  input.quest_orientation_jump_rad = config.unexpected_orientation_jump_rad + 1.0e-6;
+  const auto output = logic.update(input);
+  EXPECT_EQ(output.state, AdapterState::FAULT);
+  EXPECT_EQ(output.reason, "unexpected_orientation_jump");
+  EXPECT_TRUE(output.stop_requested);
+  EXPECT_FALSE(output.command.has_value());
+}
+
+TEST(AdapterLogic, JumpExactlyFortyFiveDegreesIsAllowed)
+{
+  AdapterConfig config;
+  AdapterLogic logic(config);
+  auto input = fresh_input();
+  activate(logic, input);
+  input.quest_orientation_status = OrientationSampleStatus::VALID;
+  input.quest_orientation_jump_rad = config.unexpected_orientation_jump_rad;
+  const auto output = logic.update(input);
+  EXPECT_EQ(output.state, AdapterState::ACTIVE);
+  EXPECT_TRUE(output.command.has_value());
+}
+
+TEST(AdapterLogic, QuaternionSignFlipDoesNotFaultOrMove)
+{
+  AdapterLogic logic;
+  auto input = fresh_input();
+  activate(logic, input);
+  input.quest_orientation = QuaternionXyzw{0.0, 0.0, 0.0, -1.0};
+  const auto output = logic.update(input);
+  ASSERT_TRUE(output.command.has_value());
+  EXPECT_EQ(output.state, AdapterState::ACTIVE);
+  EXPECT_NEAR(
+    shortest_angular_distance(QuaternionXyzw{}, output.command->orientation),
+    0.0, 1e-12);
+}
+
+TEST(AdapterLogic, AnchorAngleExactlyNinetyDegreesIsAllowed)
+{
+  AdapterConfig config;
+  config.max_angular_velocity_rad_s = 100.0;
+  config.max_angular_step_rad = kPi;
+  AdapterLogic logic(config);
+  auto input = fresh_input();
+  input.dt_seconds = 0.1;
+  activate(logic, input);
+  input.quest_orientation = axis_angle(0.0, 0.0, 1.0, config.max_anchor_angle_rad);
+  const auto output = logic.update(input);
+  EXPECT_EQ(output.state, AdapterState::ACTIVE);
+  EXPECT_TRUE(output.command.has_value());
+}
+
+TEST(AdapterLogic, AnchorAngleAboveNinetyDegreesFaultsAndStops)
+{
+  AdapterConfig config;
+  AdapterLogic logic(config);
+  auto input = fresh_input();
+  activate(logic, input);
+  input.quest_orientation =
+    axis_angle(0.0, 0.0, 1.0, config.max_anchor_angle_rad + 1.0e-6);
+  const auto output = logic.update(input);
+  EXPECT_EQ(output.state, AdapterState::FAULT);
+  EXPECT_EQ(output.reason, "anchor_angle_violation");
+  EXPECT_TRUE(output.stop_requested);
+  EXPECT_FALSE(output.command.has_value());
+}
+
+TEST(AdapterLogic, OrientationFaultDoesNotPublishTranslationCandidate)
+{
+  AdapterLogic logic;
+  auto input = fresh_input();
+  activate(logic, input);
+  input.target_pose.position[0] = 0.01;
+  input.quest_orientation_valid = false;
+  input.quest_orientation_status = OrientationSampleStatus::INVALID;
+  const auto output = logic.update(input);
+  EXPECT_EQ(output.reason, "invalid_quest_orientation");
+  EXPECT_FALSE(output.command.has_value());
+}
+
+TEST(AdapterLogic, TranslationFaultDoesNotPublishOrientationCandidate)
+{
+  AdapterConfig config;
+  config.max_anchor_distance_m = 0.001;
+  AdapterLogic logic(config);
+  auto input = fresh_input();
+  activate(logic, input);
+  input.target_pose.position[0] = 0.01;
+  input.quest_orientation = axis_angle(0.0, 0.0, 1.0, 0.2);
+  const auto output = logic.update(input);
+  EXPECT_EQ(output.reason, "anchor_distance_violation");
+  EXPECT_FALSE(output.command.has_value());
+}
+
+TEST(AdapterLogic, InvalidRobotOrientationCannotBecomeAnchor)
+{
+  AdapterLogic logic;
+  auto input = fresh_input();
+  input.enable = false;
+  ASSERT_EQ(logic.update(input).state, AdapterState::ARMED);
+  input.robot_orientation_valid = false;
+  input.enable = true;
+  const auto output = logic.update(input);
+  EXPECT_EQ(output.state, AdapterState::FAULT);
+  EXPECT_EQ(output.reason, "invalid_robot_orientation");
+  EXPECT_FALSE(output.command.has_value());
+}
+
+TEST(AdapterLogic, TimeoutAndReleaseRearmSemanticsRemainUnchanged)
+{
+  AdapterLogic logic;
+  auto input = fresh_input();
+  activate(logic, input);
+  input.enable = false;
+  input.inputs_fresh = false;
+  input.quest_orientation_valid = false;
+  input.quest_orientation_status = OrientationSampleStatus::INVALID;
+  const auto released = logic.update(input);
+  EXPECT_EQ(released.state, AdapterState::REARM_REQUIRED);
+  EXPECT_EQ(released.reason, "deadman_released");
+  EXPECT_TRUE(released.stop_requested);
+
+  input.enable = true;
+  input.inputs_fresh = true;
+  input.quest_orientation_valid = true;
+  input.quest_orientation_status = OrientationSampleStatus::VALID;
+  EXPECT_EQ(logic.update(input).state, AdapterState::REARM_REQUIRED);
+  input.enable = false;
+  EXPECT_EQ(logic.update(input).state, AdapterState::ARMED);
+  input.enable = true;
+  ASSERT_EQ(logic.update(input).state, AdapterState::ACTIVE);
+  input.inputs_fresh = false;
+  const auto timed_out = logic.update(input);
+  EXPECT_EQ(timed_out.state, AdapterState::REARM_REQUIRED);
+  EXPECT_EQ(timed_out.reason, "input_not_fresh");
+  EXPECT_TRUE(timed_out.stop_requested);
+}
+
+TEST(AdapterLogic, ClearOrientationFaultStillRequiresReleaseThenPress)
+{
+  AdapterLogic logic;
+  auto input = fresh_input();
+  activate(logic, input);
+  input.quest_orientation_valid = false;
+  input.quest_orientation_status = OrientationSampleStatus::INVALID;
+  ASSERT_EQ(logic.update(input).state, AdapterState::FAULT);
+  EXPECT_FALSE(logic.clear_fault(true));
+  EXPECT_TRUE(logic.clear_fault(false));
+
+  input.quest_orientation_valid = true;
+  input.quest_orientation_status = OrientationSampleStatus::VALID;
+  input.enable = true;
+  EXPECT_EQ(logic.update(input).state, AdapterState::REARM_REQUIRED);
+  input.enable = false;
+  EXPECT_EQ(logic.update(input).state, AdapterState::ARMED);
+  input.enable = true;
+  const auto restarted = logic.update(input);
+  EXPECT_EQ(restarted.state, AdapterState::ACTIVE);
+  EXPECT_TRUE(restarted.anchor_captured);
+}
+
+
 }  // namespace
