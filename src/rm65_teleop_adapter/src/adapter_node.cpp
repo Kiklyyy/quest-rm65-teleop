@@ -1,5 +1,6 @@
 #include "rm65_teleop_adapter/adapter_logic.hpp"
 #include "rm65_teleop_adapter/quest_input_deadman.hpp"
+#include "rm65_teleop_adapter/quest_orientation_tracker.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -85,6 +86,15 @@ public:
     config.max_step_m = declare_parameter<double>("max_step_m", 0.0001);
     config.max_anchor_distance_m = declare_parameter<double>("max_anchor_distance_m", 0.03);
     config.unexpected_target_jump_m = declare_parameter<double>("unexpected_target_jump_m", 0.10);
+    config.rotation_scale = this->declare_parameter<double>("rotation_scale", 1.0);
+    config.max_angular_velocity_rad_s = this->declare_parameter<double>(
+      "max_angular_velocity_rad_s", 1.5707963267948966);
+    config.max_angular_step_rad = this->declare_parameter<double>(
+      "max_angular_step_rad", 0.01);
+    config.max_anchor_angle_rad = this->declare_parameter<double>(
+      "max_anchor_angle_rad", 1.5707963267948966);
+    config.unexpected_orientation_jump_rad = this->declare_parameter<double>(
+      "unexpected_orientation_jump_rad", 0.7853981633974483);
     const auto mapping = declare_parameter<std::vector<double>>(
       "mapping", {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0});
     const auto workspace_min = declare_parameter<std::vector<double>>(
@@ -98,6 +108,8 @@ public:
     std::copy(workspace_min.begin(), workspace_min.end(), config.workspace_min.begin());
     std::copy(workspace_max.begin(), workspace_max.end(), config.workspace_max.begin());
     logic_ = std::make_unique<AdapterLogic>(config);
+    orientation_tracker_ = std::make_unique<QuestOrientationTracker>(
+      config.unexpected_orientation_jump_rad);
 
     target_timeout_ = declare_parameter<double>("target_timeout", 0.20);
     quest_pose_timeout_ = declare_parameter<double>("quest_pose_timeout", 0.20);
@@ -142,6 +154,10 @@ public:
       });
     quest_pose_subscription_ = create_subscription<geometry_msgs::msg::PoseStamped>(
       quest_pose_topic, 10, [this](geometry_msgs::msg::PoseStamped::SharedPtr message) {
+        const QuaternionXyzw raw_orientation{
+          message->pose.orientation.x, message->pose.orientation.y,
+          message->pose.orientation.z, message->pose.orientation.w};
+        orientation_tracker_->ingest(raw_orientation);
         quest_pose_received_ = true;
         quest_pose_valid_ = finite_position(*message);
         quest_pose_time_ = SteadyClock::now();
@@ -154,9 +170,17 @@ public:
       });
     robot_pose_subscription_ = create_subscription<geometry_msgs::msg::Pose>(
       robot_pose_topic, 10, [this](geometry_msgs::msg::Pose::SharedPtr message) {
-        robot_pose_ = *message;
         robot_received_ = true;
         robot_time_ = SteadyClock::now();
+        Pose3 candidate = from_ros_pose(*message);
+        const auto normalized = normalize_quaternion(candidate.orientation);
+        if (!normalized.has_value()) {
+          robot_orientation_valid_ = false;
+          return;
+        }
+        candidate.orientation = *normalized;
+        robot_pose_ = candidate;
+        robot_orientation_valid_ = true;
       });
 
     clear_fault_service_ = create_service<std_srvs::srv::Trigger>(
@@ -207,6 +231,12 @@ private:
     max_cycle_period_seen_ = std::max(max_cycle_period_seen_, dt);
 
     CycleInput input;
+    const OrientationSnapshot orientation = orientation_tracker_->consume_snapshot();
+    input.quest_orientation = orientation.latest_orientation;
+    input.quest_orientation_valid =
+      orientation.has_valid_orientation && orientation.latest_sample_valid;
+    input.quest_orientation_status = orientation.status;
+    input.quest_orientation_jump_rad = orientation.jump_angle_rad;
     input.enable = deadman_pressed_;
     input.target_fresh = target_valid_ && is_fresh(target_received_, target_time_, target_timeout_);
     input.quest_pose_fresh = quest_pose_valid_ &&
@@ -214,13 +244,20 @@ private:
     input.inputs_fresh = is_fresh(inputs_received_, inputs_time_, inputs_timeout_);
     input.robot_fresh = is_fresh(robot_received_, robot_time_, robot_timeout_);
     input.control_period_valid = !hardware_mode_ || dt <= max_control_period_;
+    input.robot_orientation_valid = robot_orientation_valid_;
     input.command_path_ready = command_path_ready();
     input.dt_seconds = dt;
     if (target_received_) input.target_pose = from_ros_pose(target_pose_.pose);
-    if (robot_received_) input.robot_pose = from_ros_pose(robot_pose_);
+    if (robot_received_) input.robot_pose = robot_pose_;
 
     const AdapterState previous = logic_->state();
     const CycleOutput output = logic_->update(input);
+    if (output.anchor_captured) {
+      orientation_tracker_->begin_active_session(input.quest_orientation);
+    }
+    if (previous == AdapterState::ACTIVE && output.state != AdapterState::ACTIVE) {
+      orientation_tracker_->end_active_session();
+    }
     if (output.state != previous) {
       RCLCPP_INFO(get_logger(), "state %s -> %s (%s)", state_name(previous),
         state_name(output.state), output.reason.empty() ? "ok" : output.reason.c_str());
@@ -273,15 +310,17 @@ private:
   bool target_received_{false}, target_valid_{false}, quest_pose_received_{false};
   bool quest_pose_valid_{false}, inputs_received_{false}, robot_received_{false};
   int stop_repeat_count_{3};
+  bool robot_orientation_valid_{false};
   double target_timeout_{0.20}, quest_pose_timeout_{0.20}, inputs_timeout_{0.20};
   double robot_timeout_{0.10}, max_control_period_{0.010}, max_cycle_period_seen_{0.0};
   std::string preview_frame_id_, command_topic_, stop_topic_;
   geometry_msgs::msg::PoseStamped target_pose_;
-  geometry_msgs::msg::Pose robot_pose_;
+  Pose3 robot_pose_;
   SteadyClock::time_point target_time_{}, quest_pose_time_{}, inputs_time_{}, robot_time_{};
   SteadyClock::time_point last_cycle_time_{}, last_status_time_{};
   std::unique_ptr<AdapterLogic> logic_;
   QuestInputDeadman input_deadman_;
+  std::unique_ptr<QuestOrientationTracker> orientation_tracker_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr preview_publisher_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_publisher_;
   rclcpp::Publisher<rm_ros_interfaces::msg::Cartepos>::SharedPtr command_publisher_;

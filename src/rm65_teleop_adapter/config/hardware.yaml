@@ -17,6 +17,11 @@ rm65_teleop_adapter:
     max_step_m: 0.00005
     max_anchor_distance_m: 0.03
     unexpected_target_jump_m: 0.10
+    rotation_scale: 1.0
+    max_angular_velocity_rad_s: 1.5707963267948966
+    max_angular_step_rad: 0.01
+    max_anchor_angle_rad: 1.5707963267948966
+    unexpected_orientation_jump_rad: 0.7853981633974483
     workspace_min: [-1.0, -1.0, 0.0]
     workspace_max: [1.0, 1.0, 1.5]
     preview_frame_id: right_rm65_base
