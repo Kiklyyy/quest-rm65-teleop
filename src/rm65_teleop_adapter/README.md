@@ -1,6 +1,6 @@
 # rm65_teleop_adapter
 
-B-side safety adapter for Quest right-hand translation to the right RealMan RM65.
+B-side safety adapter for Quest right-hand 6DoF pose teleoperation to the right RealMan RM65.
 
 ## Unified right-arm bringup
 
@@ -14,7 +14,10 @@ Dry-run:
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py
 ```
 
-Hardware mode:
+Hardware mode (translation has prior field evidence; orientation does not):
+
+> **Hardware warning:** Automated success does not authorize real robot rotation.
+> Complete the live Quest probe and obtain explicit authorization for staged RM65 validation first.
 
 ```bash
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py mode:=hardware
@@ -44,7 +47,10 @@ Motion profiles can override only `translation_scale`, `max_velocity_mps`,
 workspace, control timing, follow/stop behavior, and topic names remain in
 `hardware.yaml`.
 
-Normal profile:
+Normal profile hardware example:
+
+> **Hardware warning:** The `normal` translation tuning evidence does not verify
+> orientation; automated success does not authorize real robot rotation.
 
 ```bash
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
@@ -63,7 +69,10 @@ upper bound of about 0.10 m/s; this is not a measured speed. The 1.0 m anchor
 radius is a field-tested tuning value pending workspace and stopping-margin
 review, not a recommended safety boundary.
 
-Fast profile:
+Fast profile hardware example:
+
+> **Hardware warning:** `fast` is unverified for hardware use, and automated
+> orientation success does not authorize real robot rotation.
 
 ```bash
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
@@ -79,6 +88,9 @@ adapter continues to load only `dry_run.yaml`, regardless of the selected
 motion profile, and does not create hardware command publishers.
 
 Hardware mode with RViz:
+
+> **Hardware warning:** RViz preview is not hardware validation; automated
+> success does not authorize real robot rotation.
 
 ```bash
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
@@ -119,7 +131,7 @@ The adapter supports two explicit modes:
 - hardware: requires `dry_run=false`, `hardware_write_enabled=true`, and
   `mapping_verified=true` before command publishers are created.
 
-The first-stage enable source is `/q2r_right_hand_inputs.press_middle`. The
+The enable source is `/q2r_right_hand_inputs.press_middle`. The
 middle-grip analog value uses hysteresis: values at or above `0.60` turn the
 deadman on, values at or below `0.40` turn it off, and values strictly between
 the thresholds preserve the previous state. NaN or infinite values safely turn
@@ -144,12 +156,46 @@ Quest +Y left    -> RM65 -Z
 Quest +Z up      -> RM65 +X
 ```
 
-Commands are relative to double anchors. Quest absolute position and orientation
-are never sent to the robot; phase 1 keeps the robot anchor orientation fixed.
+Commands are relative to position and orientation anchors. Pressing the
+middle-finger Grip captures both Quest and robot anchors; translation and
+rotation are computed together and committed as one Pose. Releasing Grip stops
+teleoperation, and pressing again captures fresh anchors without a command jump.
+Quest absolute pose is never copied directly to the robot.
+
+Raw Quest orientation comes directly from
+`/q2r_right_hand_pose.pose.orientation`; the identity orientation carried by
+`/quest_right_target_pose` remains a translation-bridge placeholder. The
+implemented world-frame convention is:
+
+```text
+Delta R_Q = R_Q * R_Q0^T
+Delta R_Q_scaled = shortest-axis-angle-scale(Delta R_Q, rotation_scale)
+Delta R_RM = M * Delta R_Q_scaled * M^T
+R_desired = Delta R_RM * R_R0
+```
+
+The first orientation safety envelope is:
+
+| Parameter | Code/config value | Human-readable value |
+|---|---:|---:|
+| `rotation_scale` | `1.0` | one-to-one relative angle |
+| `max_angular_velocity_rad_s` | `1.5707963267948966` | 90 deg/s |
+| `max_angular_step_rad` | `0.01` | about 0.57 deg/cycle |
+| `max_anchor_angle_rad` | `1.5707963267948966` | 90 deg |
+| `unexpected_orientation_jump_rad` | `0.7853981633974483` | 45 deg |
+
+Angular output advances from the last command by shortest-path SLERP with
+`min(max_angular_step_rad, max_angular_velocity_rad_s * dt)`. Invalid or
+non-finite Quest/robot quaternions, an above-threshold consecutive Quest jump,
+or an above-limit anchor-relative angle stop the whole Pose command and require
+the existing fault/rearm sequence. Quaternion sign flips (`q` to `-q`) are
+the same orientation and do not create a jump.
+
 The checked-in hardware base uses `follow=false`, a nominal 200 Hz timer, and a
 50 ms control-stall fault. The default `safe` motion profile adds the 5 mm/s
-velocity limit, 0.05 mm per-step limit, and 3 cm anchor radius. Dry-run remains
-the default launch mode.
+velocity limit, 0.05 mm per-step limit, and 3 cm anchor radius. Translation
+mapping, motion profiles, workspace, deadman thresholds, watchdogs and command
+path remain unchanged. Dry-run remains the default launch mode.
 
 ## Build and test
 
@@ -174,10 +220,32 @@ bringup command for routine Quest teleoperation setup.
 
 Simulation publishers must be remapped to test-only topics; do not inject simulated data into live Quest topics.
 
+The bounded adapter-only 6DoF synthetic probe uses an isolated local ROS domain:
+
+```bash
+export ROS_DOMAIN_ID=142
+export ROS_LOCALHOST_ONLY=1
+install/rm65_teleop_adapter/lib/rm65_teleop_adapter/rm65_teleop_adapter_node \
+  --ros-args \
+  --params-file install/rm65_teleop_adapter/share/rm65_teleop_adapter/config/dry_run.yaml &
+adapter_pid=$!
+/usr/bin/python3 src/rm65_teleop_adapter/test/dry_run_6dof_probe.py
+kill "$adapter_pid"
+wait "$adapter_pid" 2>/dev/null || true
+```
+
+This probe verifies software preview behavior and zero hardware-command
+publishers only. Live Quest quaternion probing and real RM65 rotation remain
+pending.
+
 ## Run hardware mode
 
 Only after the right-arm driver, workspace, emergency stop, unique command source,
 and live Quest inputs have been checked:
+
+> **Hardware warning:** Automated and synthetic dry-run success does not
+> authorize real robot rotation. Live Quest validation and an explicitly
+> authorized staged RM65 procedure are still required.
 
 ```bash
 ros2 launch rm65_teleop_adapter hardware.launch.py

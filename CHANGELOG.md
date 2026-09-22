@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-22 — Right-arm 6DoF orientation control
+
+- 新增 raw `/q2r_right_hand_pose.pose.orientation` → `rm65_teleop_adapter` 的相对姿态路径；既有 `/quest_right_target_pose` bridge 继续只承担已验证平移 target。
+- 固定 ROS `(x,y,z,w)`、Hamilton product、`Delta R_Q = R_Q * R_Q0^T`、矩阵 `M` 共轭和 `R_desired = Delta R_RM * R_R0` 左乘约定，不使用 Euler 累积。
+- 新增 `rotation_scale=1.0`、`max_angular_velocity_rad_s=1.5707963267948966`、`max_angular_step_rad=0.01`、`max_anchor_angle_rad=1.5707963267948966`、`unexpected_orientation_jump_rad=0.7853981633974483`。
+- 新增 quaternion math、Quest orientation tracker、anchoring/mapping/limiter/safety/config tests，以及 adapter-only `ROS_DOMAIN_ID=142` synthetic dry-run probe。
+- 保持 translation bridge、translation mapping、motion profiles、workspace、deadman、watchdogs、stop/rearm 和单一 Pose command path 不变。
+- 自动化测试与 synthetic dry-run 已验证；live Quest quaternion probe 仍 pending，real RM65 rotation 尚未运行且 not verified。
+
 ## 2026-09-21 — Middle-grip teleop deadman
 
 - 将右 RM65 teleop deadman 来源从 `/q2r_right_hand_inputs.button_lower` 切换为中指 Grip 模拟量 `/q2r_right_hand_inputs.press_middle`。

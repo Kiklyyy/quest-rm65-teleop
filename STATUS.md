@@ -1,12 +1,26 @@
 # Project Status
 
-更新日期：2026-09-21
+更新日期：2026-09-22
 
 ## 当前总体阶段
 
 右手 Quest 到右 RM65 的**平移 demo 已首次端到端打通**。现场已确认真实 Quest 能通过 ROS2、right target bridge 和 `rm65_teleop_adapter` 驱动右 RM65 产生实际运动。
 
-当前结论只覆盖第一阶段右手/右臂平移 demo，不代表旋转、夹爪、左臂、双臂或完整安全验收已经完成。
+右臂 6DoF orientation extension 已完成自动化验证和隔离 synthetic dry-run
+preview 验证。该结论不是 live Quest quaternion 验证，也不是实际 RM65 旋转验证；
+夹爪、左臂、双臂和完整安全验收仍未完成。
+
+## Right-arm 6DoF orientation implementation
+
+- quaternion、frame mapping、双姿态锚点、angular limiter 和 orientation safety
+  单元测试已通过；
+- 既有 XYZ translation、middle-grip deadman、motion profile 和 Quest bridge
+  regressions 已通过；
+- `ROS_DOMAIN_ID=142`、`ROS_LOCALHOST_ONLY=1` 的 adapter-only synthetic
+  dry-run 已验证 preview 的轴映射、同时平移/旋转、release/repress 无跳变，并确认
+  `/right/rm_driver/movep_canfd_cmd` publisher count 为 0；
+- live Quest quaternion probe = pending；
+- real RM65 rotation = not verified，本轮没有启动 RM driver 或控制真实机械臂。
 
 ## V0.2 启动与观察体验
 
@@ -33,6 +47,9 @@
 - B 侧独立构建成功；此前报告 12 项 GTest 全部通过，`colcon test-result` 为 13 tests、0 failures。
 - 隔离硬件模式联调已完成，模拟 command/stop 与正式真机 topic 隔离。
 - **首次真实 Quest → 右 RM65 真机平移运动已经现场成功。**
+- raw Quest orientation 直接进入 adapter 的 6DoF 相对姿态链路已经实现；使用
+  world-frame delta、已确认矩阵共轭、robot anchor 左乘和 shortest-path SLERP，
+  但仅有自动化与 synthetic dry-run 证据。
 
 ## 当前 deadman 输入
 
@@ -71,7 +88,8 @@ field-tested tuning value / pending workspace and stopping-margin review，不�
 
 ## 尚未完成/仍需验证
 
-- Quest orientation → RM65 orientation。
+- live Quest quaternion 稳定性、连续性、norm、`q/-q` 与 preview 方向 probe。
+- 真实 RM65 单轴、组合及 translation + rotation 分阶段验证。
 - 夹爪。
 - 左臂与双臂。
 - 全部真实断流场景和长期网络抖动。
@@ -86,10 +104,12 @@ field-tested tuning value / pending workspace and stopping-margin review，不�
 ```text
 Quest 右手柄
   -> ROS TCP
-  -> /q2r_right_hand_pose + /q2r_right_hand_inputs
-  -> quest_right_target_bridge
-  -> /quest_right_target_pose
+  -> /q2r_right_hand_pose.position
+  -> quest_right_target_bridge -> /quest_right_target_pose (translation)
   -> rm65_teleop_adapter
+
+/q2r_right_hand_pose.orientation + /q2r_right_hand_inputs
+  -------------------------------> rm65_teleop_adapter
   -> /right/rm_driver/movep_canfd_cmd
   -> 右 RM65
 ```

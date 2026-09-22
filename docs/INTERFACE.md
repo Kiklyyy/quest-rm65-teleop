@@ -8,10 +8,13 @@
 
 | Topic | 类型 | 当前使用字段 |
 |---|---|---|
-| `/q2r_right_hand_pose` | `geometry_msgs/msg/PoseStamped` | `pose.position.{x,y,z}` |
+| `/q2r_right_hand_pose` | `geometry_msgs/msg/PoseStamped` | `pose.position.{x,y,z}` 供 bridge 使用；`pose.orientation.{x,y,z,w}` 由 adapter 直接使用 |
 | `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `press_middle` |
 
-第一版忽略输入 Pose 的 header、frame、stamp 和 orientation，也不使用摇杆、`press_index`、`button_lower` 或 `button_upper`。
+输入 Pose 的 header、frame 和 stamp 不作为机器人坐标依据。现有
+`quest_right_target_bridge` 仍只处理 position；orientation 不经过该 bridge，而由
+`rm65_teleop_adapter` 直接读取原始 Quest Pose。当前仍不使用摇杆、
+`press_index`、`button_lower` 或 `button_upper`。
 
 ### 输出
 
@@ -25,7 +28,7 @@
 - 仅右手、仅平移；
 - 比例 1:1，第一版轴映射为 identity；
 - 初始 position 为 `(0.5, 0.0, 0.5)`；
-- orientation 固定为 `(0, 0, 0, 1)`；
+- orientation 固定为 `(0, 0, 0, 1)`，只作为既有平移 target 的占位值，不承担机器人姿态控制；
 - `frame_id = "world"`；
 - `press_middle >= 0.60` 后按相对位移跟随，`press_middle <= 0.40` 时立即冻结，再次达到按下阈值时以当前位置重新锚定；
 - `0.40 < press_middle < 0.60` 时保持上一 deadman 状态；非有限值按 release 处理；
@@ -108,7 +111,7 @@ topic 名称均不属于 motion profile。dry-run 始终只加载 `dry_run.yaml`
 | Topic | 类型 | 用途 |
 |---|---|---|
 | `/quest_right_target_pose` | `geometry_msgs/msg/PoseStamped` | A 侧映射后的虚拟右手目标，只使用相对平移 |
-| `/q2r_right_hand_pose` | `geometry_msgs/msg/PoseStamped` | 独立 Quest Pose 接收 watchdog |
+| `/q2r_right_hand_pose` | `geometry_msgs/msg/PoseStamped` | 独立 Quest Pose 接收 watchdog；`pose.orientation` 是机器人相对姿态控制的直接输入 |
 | `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `press_middle` 迟滞 deadman 与独立 Inputs watchdog |
 | `/right/rm_driver/udp_arm_position` | `geometry_msgs/msg/Pose` | 机器人真实末端 Pose、锚点和反馈 watchdog |
 
@@ -150,28 +153,70 @@ Quest 向右 (-Y) -> RM65 +Z
 Quest 向上 (+Z) -> RM65 +X
 ```
 
-enable 上升沿同时采集：
+enable 上升沿同时采集平移与姿态双锚点：
 
 ```text
 quest_anchor = 当前 /quest_right_target_pose.position
 robot_anchor = 当前 /right/rm_driver/udp_arm_position
+q_Q0 = 当前 /q2r_right_hand_pose.pose.orientation
+q_R0 = 当前 /right/rm_driver/udp_arm_position.orientation
 ```
 
-第一阶段命令：
+四元数使用 ROS 存储顺序 `(x, y, z, w)`、Hamilton product 和主动列向量旋转。
+所有合法输入先正规化；`q` 与 `-q` 通过 hemisphere 统一视作同一姿态，核心计算不做
+Euler 角累积。world/base-frame 相对旋转约定与实现顺序固定为：
 
 ```text
-p_robot_cmd = p_robot_anchor
+Delta R_Q = R_Q * R_Q0^T
+Delta R_Q_scaled = shortest-axis-angle-scale(Delta R_Q, rotation_scale)
+Delta R_RM = M * Delta R_Q_scaled * M^T
+R_desired = Delta R_RM * R_R0
+```
+
+`R_desired` 的左乘是有意的：Quest world 中的相对旋转经 `M` 共轭后成为
+RM base/world-frame 相对旋转，再左乘机器人姿态锚点。不得把这个约定与
+body-frame 右乘混用。矩阵保持与已验证平移物理轴映射相同：
+
+```text
+M = [ 0  0  1
+     -1  0  0
+      0 -1  0 ]
+
+Quest +X forward -> RM65 -Y
+Quest +Y left    -> RM65 -Z
+Quest +Z up      -> RM65 +X
+```
+
+同一控制周期原子组成一个 Pose：
+
+```text
+p_robot_desired = p_robot_anchor
               + R_mapping * translation_scale
               * (p_quest_now - p_quest_anchor)
-
-q_robot_cmd = q_robot_anchor
+q_robot_desired = quaternion(R_desired)
 ```
 
 要求：
 
 - 不把 Quest `world` 中的绝对 `(0.5, 0.0, 0.5)` 当作机器人坐标；
-- 第一阶段禁止 Quest orientation、夹爪、左臂和双臂控制；
-- 每次重新授权都重新采集双锚点，恢复时不得跳变。
+- 每次重新授权都重新采集平移与姿态锚点，恢复时不得跳变；
+- translation mapping、translation scale、motion profiles、workspace 和全部既有
+  watchdog 保持不变；
+- 夹爪、左臂和双臂仍不在当前范围。
+
+姿态命令从上一条已提交命令走 shortest-path SLERP。每周期允许角度为：
+
+```text
+allowed_angle = min(max_angular_step_rad,
+                    max_angular_velocity_rad_s * dt)
+```
+
+从 Quest 姿态锚点的相对角超过 `max_anchor_angle_rad`、连续合法 Quest
+sample 的 shortest angular distance 超过
+`unexpected_orientation_jump_rad`，或收到无效/非有限/近零范数四元数时，
+ACTIVE 状态通过既有 stop/fault/rearm 状态机退出，且该周期不提交平移或旋转命令。
+deadman release 的优先级高于同周期 orientation event；正常松手保持既有
+release stop 和 release → press rearm 语义。
 
 ## 已确认的右 RM65 runtime 接口
 
