@@ -4,6 +4,9 @@
 #include <optional>
 #include <string>
 
+#include "rm65_teleop_adapter/quaternion_math.hpp"
+#include "rm65_teleop_adapter/quest_orientation_tracker.hpp"
+
 namespace rm65_teleop_adapter
 {
 
@@ -13,17 +16,22 @@ const char * state_name(AdapterState state);
 struct Pose3
 {
   std::array<double, 3> position{0.0, 0.0, 0.0};
-  std::array<double, 4> orientation{0.0, 0.0, 0.0, 1.0};
+  QuaternionXyzw orientation{};
 };
 
 struct AdapterConfig
 {
-  std::array<double, 9> mapping{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
+  Matrix3RowMajor mapping{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
   double translation_scale{1.0};
   double max_velocity_mps{0.01};
   double max_step_m{0.0001};
   double max_anchor_distance_m{0.03};
   double unexpected_target_jump_m{0.10};
+  double rotation_scale{1.0};
+  double max_angular_velocity_rad_s{1.5707963267948966};
+  double max_angular_step_rad{0.01};
+  double max_anchor_angle_rad{1.5707963267948966};
+  double unexpected_orientation_jump_rad{0.7853981633974483};
   std::array<double, 3> workspace_min{-1.0, -1.0, 0.0};
   std::array<double, 3> workspace_max{1.0, 1.0, 1.5};
 };
@@ -32,6 +40,11 @@ struct CycleInput
 {
   Pose3 target_pose;
   Pose3 robot_pose;
+  QuaternionXyzw quest_orientation{};
+  bool quest_orientation_valid{false};
+  bool robot_orientation_valid{false};
+  OrientationSampleStatus quest_orientation_status{OrientationSampleStatus::VALID};
+  double quest_orientation_jump_rad{0.0};
   bool enable{false};
   bool target_fresh{false};
   bool quest_pose_fresh{false};
@@ -71,6 +84,7 @@ private:
   AdapterState state_{AdapterState::DISABLED};
   bool release_observed_{false};
   Pose3 quest_anchor_;
+  QuaternionXyzw quest_orientation_anchor_;
   Pose3 robot_anchor_;
   Pose3 last_command_;
   Pose3 last_target_;

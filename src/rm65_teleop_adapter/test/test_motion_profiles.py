@@ -112,3 +112,23 @@ def test_profile_contains_only_allowed_motion_parameters(profile):
     parameters = document["rm65_teleop_adapter"]["ros__parameters"]
     assert set(parameters) == ALLOWED_PROFILE_KEYS
     assert parameters == EXPECTED_PROFILES[profile]
+
+
+def load_yaml_parameters(path: Path):
+    with path.open(encoding="utf-8") as stream:
+        document = yaml.safe_load(stream)
+    return document["rm65_teleop_adapter"]["ros__parameters"]
+
+
+def test_base_configs_define_exact_orientation_envelope():
+    expected = {
+        "rotation_scale": 1.0,
+        "max_angular_velocity_rad_s": 1.5707963267948966,
+        "max_angular_step_rad": 0.01,
+        "max_anchor_angle_rad": 1.5707963267948966,
+        "unexpected_orientation_jump_rad": 0.7853981633974483,
+    }
+    for config_name in ("dry_run.yaml", "hardware.yaml"):
+        params = load_yaml_parameters(PACKAGE_ROOT / "config" / config_name)
+        for key, value in expected.items():
+            assert params[key] == pytest.approx(value, abs=1.0e-12)
