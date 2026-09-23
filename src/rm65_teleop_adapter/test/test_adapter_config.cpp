@@ -1,4 +1,5 @@
 #include "rm65_teleop_adapter/adapter_logic.hpp"
+#include "rm65_teleop_adapter/home_config.hpp"
 
 #include <cmath>
 #include <limits>
@@ -132,5 +133,47 @@ TEST(AdapterConfigValidation, RejectsJumpAngleOutsideZeroToPi)
   }
 }
 
+
+HomeParameterSet valid_home_parameters()
+{
+  HomeParameterSet p;
+  p.dry_run = false;
+  p.enabled = true;
+  p.button_field = "upper";
+  p.action_name = "/right/rm_group_controller/follow_joint_trajectory";
+  p.joint_degrees = {-95.605, 4.406, -80.034, -22.695, -48.462, 97.570};
+  p.joint_names = {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6"};
+  p.speed_deg_s = 15.0;
+  p.hold_seconds = 1.5;
+  return p;
+}
+
+TEST(HomeConfigValidation, AcceptsConfirmedHardwareParameters)
+{
+  auto resolved = resolve_home_config(valid_home_parameters());
+  ASSERT_TRUE(resolved);
+  EXPECT_EQ(resolved->button_field, QuestFaceButtonField::UPPER);
+  EXPECT_EQ(resolved->trajectory.joint_names[0], "joint1");
+}
+
+TEST(HomeConfigValidation, RejectsInvalidFieldsAndDryRun)
+{
+  auto p = valid_home_parameters();
+  p.dry_run = true; EXPECT_FALSE(resolve_home_config(p));
+  p = valid_home_parameters(); p.button_field = "unknown";
+  EXPECT_FALSE(resolve_home_config(p));
+  p = valid_home_parameters(); p.joint_degrees.pop_back();
+  EXPECT_FALSE(resolve_home_config(p));
+  p = valid_home_parameters(); p.joint_names.pop_back();
+  EXPECT_FALSE(resolve_home_config(p));
+  p = valid_home_parameters(); p.joint_names[1] = "joint1";
+  EXPECT_FALSE(resolve_home_config(p));
+  p = valid_home_parameters(); p.speed_deg_s = 0;
+  EXPECT_FALSE(resolve_home_config(p));
+  p = valid_home_parameters(); p.hold_seconds = 0;
+  EXPECT_FALSE(resolve_home_config(p));
+  p = valid_home_parameters(); p.action_name = "";
+  EXPECT_FALSE(resolve_home_config(p));
+}
 }  // namespace
 }  // namespace rm65_teleop_adapter

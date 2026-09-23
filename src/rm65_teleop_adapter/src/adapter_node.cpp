@@ -1,4 +1,6 @@
 #include "rm65_teleop_adapter/adapter_logic.hpp"
+#include "rm65_teleop_adapter/home_action_client.hpp"
+#include "rm65_teleop_adapter/home_config.hpp"
 #include "rm65_teleop_adapter/quest_input_deadman.hpp"
 #include "rm65_teleop_adapter/quest_orientation_tracker.hpp"
 
@@ -6,6 +8,8 @@
 #include <chrono>
 #include <cmath>
 #include <functional>
+#include <deque>
+#include <optional>
 #include <iomanip>
 #include <memory>
 #include <sstream>
@@ -18,6 +22,7 @@
 #include "quest2ros/msg/ovr2_ros_inputs.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rm_ros_interfaces/msg/cartepos.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
 #include "std_msgs/msg/empty.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_srvs/srv/trigger.hpp"
@@ -79,8 +84,31 @@ public:
               "hardware mode requires dry_run=false, hardware_write_enabled=true and mapping_verified=true");
     }
     hardware_mode_ = !dry_run_ && hardware_write_enabled_ && mapping_verified_;
+    home_enabled_ = declare_parameter<bool>("home_enabled", false);
+    HomeParameterSet home_parameters;
+    home_parameters.dry_run = dry_run_;
+    home_parameters.enabled = home_enabled_;
+    home_parameters.button_field = declare_parameter<std::string>("home_button_field", "upper");
+    home_parameters.action_name = declare_parameter<std::string>("home_action_name", "");
+    home_parameters.joint_degrees = declare_parameter<std::vector<double>>(
+      "home_joint_degrees", std::vector<double>{});
+    home_parameters.joint_names = declare_parameter<std::vector<std::string>>(
+      "home_joint_names", std::vector<std::string>{});
+    home_parameters.speed_deg_s = declare_parameter<double>("home_speed_deg_s", 0.0);
+    home_parameters.hold_seconds = declare_parameter<double>("home_hold_seconds", 0.0);
+    joint_state_topic_ = declare_parameter<std::string>("joint_state_topic", "/right/joint_states");
+    joint_state_timeout_ = declare_parameter<double>("joint_state_timeout", 0.10);
+    if (home_enabled_) {
+      if (!hardware_mode_ || !std::isfinite(joint_state_timeout_) ||
+          joint_state_timeout_ <= 0.0 || joint_state_topic_.empty()) {
+        throw std::invalid_argument("Home requires valid hardware mode and joint-state watchdog");
+      }
+      home_config_ = resolve_home_config(home_parameters);
+      if (!home_config_) throw std::invalid_argument("invalid enabled Home configuration");
+    }
 
     AdapterConfig config;
+    if (home_config_) config.home_hold_seconds = home_config_->trajectory.hold_seconds;
     config.translation_scale = declare_parameter<double>("translation_scale", 1.0);
     config.max_velocity_mps = declare_parameter<double>("max_velocity_mps", 0.01);
     config.max_step_m = declare_parameter<double>("max_step_m", 0.0001);
@@ -144,6 +172,11 @@ public:
       command_publisher_ = create_publisher<rm_ros_interfaces::msg::Cartepos>(command_topic_, 10);
       stop_publisher_ = create_publisher<std_msgs::msg::Empty>(stop_topic_, 10);
     }
+    if (home_config_) {
+      home_client_ = std::make_unique<HomeActionClient>(
+        *this, home_config_->action_name,
+        [this](HomeActionEvent event) {home_events_.push_back(event);});
+    }
 
     target_subscription_ = create_subscription<geometry_msgs::msg::PoseStamped>(
       target_topic, 10, [this](geometry_msgs::msg::PoseStamped::SharedPtr message) {
@@ -165,6 +198,9 @@ public:
     inputs_subscription_ = create_subscription<quest2ros::msg::OVR2ROSInputs>(
       inputs_topic, 10, [this](quest2ros::msg::OVR2ROSInputs::SharedPtr message) {
         deadman_pressed_ = input_deadman_.update(*message);
+        if (home_config_) {
+          home_button_pressed_ = quest_face_button_pressed(*message, home_config_->button_field);
+        }
         inputs_received_ = true;
         inputs_time_ = SteadyClock::now();
       });
@@ -182,6 +218,18 @@ public:
         robot_pose_ = candidate;
         robot_orientation_valid_ = true;
       });
+
+    if (home_config_) {
+      joint_state_subscription_ = create_subscription<sensor_msgs::msg::JointState>(
+        joint_state_topic_, 10, [this](sensor_msgs::msg::JointState::SharedPtr message) {
+          joint_state_received_ = true;
+          joint_state_time_ = SteadyClock::now();
+          const auto ordered = reorder_joint_positions(
+            message->name, message->position, home_config_->trajectory.joint_names);
+          joint_state_valid_ = ordered.has_value();
+          if (ordered) joint_positions_ = *ordered;
+        });
+    }
 
     clear_fault_service_ = create_service<std_srvs::srv::Trigger>(
       "/right/rm65_teleop/clear_fault",
@@ -204,7 +252,14 @@ public:
 
   ~AdapterNode() override
   {
-    if (hardware_mode_ && logic_ && logic_->state() == AdapterState::ACTIVE) publish_stop();
+    if (!hardware_mode_ || !logic_) return;
+    if (logic_->state() == AdapterState::HOMING ||
+        (home_client_ && home_client_->goal_active())) {
+      if (home_client_) home_client_->request_cancel();
+      publish_stop();
+    } else if (logic_->state() == AdapterState::ACTIVE) {
+      publish_stop();
+    }
   }
 
 private:
@@ -246,6 +301,18 @@ private:
     input.control_period_valid = !hardware_mode_ || dt <= max_control_period_;
     input.robot_orientation_valid = robot_orientation_valid_;
     input.command_path_ready = command_path_ready();
+    input.home_button_pressed = home_button_pressed_;
+    input.joint_state_fresh = home_enabled_ && joint_state_valid_ &&
+      is_fresh(joint_state_received_, joint_state_time_, joint_state_timeout_);
+    input.joint_state_valid = joint_state_valid_;
+    input.home_action_ready = home_client_ && home_client_->server_ready() &&
+      (logic_->state() == AdapterState::HOMING || !home_client_->goal_active());
+    input.home_plan_valid = home_config_ && joint_state_valid_ &&
+      make_home_trajectory_plan(joint_positions_, home_config_->trajectory).has_value();
+    if (!home_events_.empty()) {
+      input.home_action_event = home_events_.front();
+      home_events_.pop_front();
+    }
     input.dt_seconds = dt;
     if (target_received_) input.target_pose = from_ros_pose(target_pose_.pose);
     if (robot_received_) input.robot_pose = robot_pose_;
@@ -262,8 +329,18 @@ private:
       RCLCPP_INFO(get_logger(), "state %s -> %s (%s)", state_name(previous),
         state_name(output.state), output.reason.empty() ? "ok" : output.reason.c_str());
     }
+    if (output.home_goal_requested) {
+      const auto plan = home_config_ ?
+        make_home_trajectory_plan(joint_positions_, home_config_->trajectory) :
+        std::optional<HomeTrajectoryPlan>{};
+      if (!home_client_ || !plan || !home_client_->send_goal(*plan)) {
+        home_events_.push_back(HomeActionEvent::REJECTED);
+        publish_stop();
+      }
+    }
+    if (output.home_cancel_requested && home_client_) home_client_->request_cancel();
     if (output.stop_requested) publish_stop();
-    if (output.command.has_value()) {
+    if (output.command.has_value() && output.state == AdapterState::ACTIVE) {
       geometry_msgs::msg::PoseStamped preview;
       preview.header.stamp = get_clock()->now();
       preview.header.frame_id = preview_frame_id_;
@@ -306,6 +383,15 @@ private:
   }
 
   bool dry_run_{true}, hardware_write_enabled_{false}, mapping_verified_{false};
+  bool home_enabled_{false}, home_button_pressed_{false};
+  bool joint_state_received_{false}, joint_state_valid_{false};
+  double joint_state_timeout_{0.10};
+  std::string joint_state_topic_;
+  std::array<double, 6> joint_positions_{};
+  SteadyClock::time_point joint_state_time_{};
+  std::optional<ResolvedHomeConfig> home_config_;
+  std::unique_ptr<HomeActionClient> home_client_;
+  std::deque<HomeActionEvent> home_events_;
   bool hardware_mode_{false}, follow_{true}, deadman_pressed_{false};
   bool target_received_{false}, target_valid_{false}, quest_pose_received_{false};
   bool quest_pose_valid_{false}, inputs_received_{false}, robot_received_{false};
@@ -329,6 +415,7 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr quest_pose_subscription_;
   rclcpp::Subscription<quest2ros::msg::OVR2ROSInputs>::SharedPtr inputs_subscription_;
   rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr robot_pose_subscription_;
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_subscription_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr clear_fault_service_;
   rclcpp::TimerBase::SharedPtr control_timer_;
 };

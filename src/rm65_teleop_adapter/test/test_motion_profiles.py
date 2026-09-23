@@ -132,3 +132,20 @@ def test_base_configs_define_exact_orientation_envelope():
         params = load_yaml_parameters(PACKAGE_ROOT / "config" / config_name)
         for key, value in expected.items():
             assert params[key] == pytest.approx(value, abs=1.0e-12)
+
+
+def test_home_is_hardware_only_and_uses_confirmed_configuration():
+    hardware = load_yaml_parameters(PACKAGE_ROOT / "config" / "hardware.yaml")
+    dry_run = load_yaml_parameters(PACKAGE_ROOT / "config" / "dry_run.yaml")
+    assert dry_run["home_enabled"] is False
+    assert hardware["home_enabled"] is True
+    assert hardware["home_button_field"] == "upper"
+    assert hardware["home_hold_seconds"] == 1.5
+    assert hardware["home_speed_deg_s"] == 15.0
+    assert hardware["home_joint_degrees"] == [-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]
+    assert hardware["home_joint_names"] == [f"joint{i}" for i in range(1, 7)]
+    assert hardware["home_action_name"] == "/right/rm_group_controller/follow_joint_trajectory"
+    for profile in ("safe", "normal", "fast"):
+        assert not (set(load_yaml_parameters(PROFILE_DIR / f"{profile}.yaml")) &
+                    {"home_enabled", "home_button_field", "home_hold_seconds", "home_speed_deg_s",
+                     "home_joint_degrees", "home_joint_names", "home_action_name"})
