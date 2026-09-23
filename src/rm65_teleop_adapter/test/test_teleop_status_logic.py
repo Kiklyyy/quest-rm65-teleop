@@ -32,8 +32,8 @@ def test_initial_status_reports_missing_inputs_without_crashing():
     model = logic.TeleopStatusModel(stream_timeout_s=0.5, adapter_timeout_s=0.5)
 
     assert model.render(now_s=0.0) == (
-        "[teleop] QUEST=LOST INPUTS=LOST TARGET=LOST ROBOT=LOST "
-        "STATE=UNKNOWN DEADMAN=? CMD=UNKNOWN"
+        "[teleop] QUEST=LOST INPUTS=LOST TARGET=LOST ROBOT=LOST JOINTS=LOST "
+        "STATE=UNKNOWN DEADMAN=? CMD=UNKNOWN HOME=IDLE"
     )
 
 
@@ -45,8 +45,8 @@ def test_live_streams_and_adapter_status_render_one_line_summary():
     model.update_adapter(adapter_payload(), now_s=1.0)
 
     assert model.render(now_s=1.1) == (
-        "[teleop] QUEST=OK INPUTS=OK TARGET=OK ROBOT=OK "
-        "STATE=ARMED DEADMAN=OFF CMD=OK"
+        "[teleop] QUEST=OK INPUTS=OK TARGET=OK ROBOT=OK JOINTS=LOST "
+        "STATE=ARMED DEADMAN=OFF CMD=OK HOME=IDLE"
     )
 
 
@@ -59,8 +59,8 @@ def test_each_stream_has_independent_display_freshness():
         adapter_payload(state="REARM_REQUIRED", deadman_pressed=True), now_s=1.0)
 
     assert model.render(now_s=1.1) == (
-        "[teleop] QUEST=LOST INPUTS=LOST TARGET=OK ROBOT=OK "
-        "STATE=REARM_REQUIRED DEADMAN=ON CMD=OK"
+        "[teleop] QUEST=LOST INPUTS=LOST TARGET=OK ROBOT=OK JOINTS=LOST "
+        "STATE=REARM_REQUIRED DEADMAN=ON CMD=OK HOME=IDLE"
     )
 
 
@@ -70,7 +70,7 @@ def test_malformed_adapter_json_becomes_unknown():
     model.update_adapter("{not-json", now_s=1.0)
 
     assert model.render(now_s=1.1).endswith(
-        "STATE=UNKNOWN DEADMAN=? CMD=UNKNOWN"
+        "STATE=UNKNOWN DEADMAN=? CMD=UNKNOWN HOME=IDLE"
     )
 
 
@@ -81,7 +81,7 @@ def test_stale_adapter_status_becomes_unknown():
         adapter_payload(state="ACTIVE", deadman_pressed=True), now_s=1.0)
 
     assert model.render(now_s=1.6).endswith(
-        "STATE=UNKNOWN DEADMAN=? CMD=UNKNOWN"
+        "STATE=UNKNOWN DEADMAN=? CMD=UNKNOWN HOME=IDLE"
     )
 
 
@@ -92,7 +92,7 @@ def test_fault_reason_is_compacted_for_single_line_output():
         adapter_payload(state="FAULT", reason="control period exceeded"), now_s=1.0)
 
     assert model.render(now_s=1.1).endswith(
-        "STATE=FAULT DEADMAN=OFF CMD=OK REASON=control_period_exceeded"
+        "STATE=FAULT DEADMAN=OFF CMD=OK HOME=IDLE REASON=control_period_exceeded"
     )
 
 
@@ -133,7 +133,7 @@ def test_semantic_deadman_field_takes_precedence_over_legacy_button_lower():
         adapter_payload(deadman_pressed=False, button_lower=True), now_s=1.0)
 
     assert model.render(now_s=1.1).endswith(
-        "STATE=ARMED DEADMAN=OFF CMD=OK"
+        "STATE=ARMED DEADMAN=OFF CMD=OK HOME=IDLE"
     )
 
 
@@ -147,5 +147,28 @@ def test_legacy_button_lower_is_supported_as_fallback():
     model.update_adapter(json.dumps(legacy), now_s=1.0)
 
     assert model.render(now_s=1.1).endswith(
-        "STATE=ARMED DEADMAN=ON CMD=OK"
+        "STATE=ARMED DEADMAN=ON CMD=OK HOME=IDLE"
     )
+
+
+def test_joint_stream_reports_lost_then_ok():
+    model = load_logic_module().TeleopStatusModel()
+    assert "JOINTS=LOST" in model.render(0.0)
+    model.mark_stream("joints", 1.0)
+    assert "JOINTS=OK" in model.render(1.1)
+
+
+def test_homing_and_hold_progress_are_visible():
+    model = load_logic_module().TeleopStatusModel()
+    model.update_adapter(adapter_payload(state="HOMING", home_action_state="ACTIVE"), 1.0)
+    assert "HOME=ACTIVE" in model.render(1.1)
+    model.update_adapter(adapter_payload(home_button_pressed=True, home_hold_progress=0.5), 2.0)
+    assert "HOME=HOLD(50%)" in model.render(2.1)
+
+
+def test_malformed_home_fields_fall_back_safely():
+    model = load_logic_module().TeleopStatusModel()
+    model.update_adapter(adapter_payload(home_button_pressed="true", home_hold_progress="nan"), 1.0)
+    assert "HOME=IDLE" in model.render(1.1)
+    model.update_adapter("{broken", 2.0)
+    assert "HOME=IDLE" in model.render(2.1)

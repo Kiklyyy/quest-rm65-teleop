@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 import json
+import math
 from typing import Dict, Optional
 
 
-STREAM_NAMES = ("quest", "inputs", "target", "robot")
+STREAM_NAMES = ("quest", "inputs", "target", "robot", "joints")
 
 
 class TeleopStatusModel:
@@ -34,6 +35,7 @@ class TeleopStatusModel:
             "deadman": "?",
             "command": "UNKNOWN",
             "reason": "",
+            "home": "IDLE",
         }
 
     def mark_stream(self, name: str, now_s: float) -> None:
@@ -58,6 +60,15 @@ class TeleopStatusModel:
             deadman_pressed = decoded.get("button_lower")
         command_path_ready = decoded.get("command_path_ready")
         reason = decoded.get("reason")
+        progress = decoded.get("home_hold_progress")
+        button = decoded.get("home_button_pressed")
+        action = decoded.get("home_action_state")
+        home = "IDLE"
+        if state == "HOMING":
+            home = action if action in ("ACTIVE", "CANCELING", "PENDING") else "ACTIVE"
+        elif state == "ARMED" and button is True and isinstance(progress, (int, float)) \
+                and not isinstance(progress, bool) and math.isfinite(progress):
+            home = f"HOLD({round(max(0.0, min(1.0, progress)) * 100):.0f}%)"
         self._adapter = {
             "state": state if isinstance(state, str) and state else "UNKNOWN",
             "deadman": (
@@ -69,6 +80,7 @@ class TeleopStatusModel:
                 "BLOCKED" if command_path_ready is False else "UNKNOWN"
             ),
             "reason": reason if isinstance(reason, str) else "",
+            "home": home,
         }
 
     @staticmethod
@@ -87,8 +99,9 @@ class TeleopStatusModel:
         line = (
             f"[teleop] QUEST={freshness['quest']} INPUTS={freshness['inputs']} "
             f"TARGET={freshness['target']} ROBOT={freshness['robot']} "
+            f"JOINTS={freshness['joints']} "
             f"STATE={adapter['state']} DEADMAN={adapter['deadman']} "
-            f"CMD={adapter['command']}"
+            f"CMD={adapter['command']} HOME={adapter['home']}"
         )
         reason = "_".join(adapter["reason"].split())
         if reason:

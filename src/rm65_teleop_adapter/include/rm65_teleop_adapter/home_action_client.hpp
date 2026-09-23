@@ -22,6 +22,7 @@ public:
     EventCallback callback);
   bool server_ready() const;
   bool goal_active() const {return in_flight_;}
+  bool goal_accepted() const {return static_cast<bool>(handle_);}
   bool send_goal(const HomeTrajectoryPlan & plan);
   bool request_cancel();
 

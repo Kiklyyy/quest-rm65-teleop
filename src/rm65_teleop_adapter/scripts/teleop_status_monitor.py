@@ -6,6 +6,7 @@ import rclpy
 from geometry_msgs.msg import Pose, PoseStamped
 from quest2ros.msg import OVR2ROSInputs
 from rclpy.node import Node
+from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 
 from teleop_status_logic import TeleopStatusModel
@@ -48,6 +49,12 @@ class TeleopStatusMonitor(Node):
             Pose,
             "/right/rm_driver/udp_arm_position",
             lambda _: self._mark("robot"),
+            10,
+        )
+        self._joint_subscription = self.create_subscription(
+            JointState,
+            "/right/joint_states",
+            lambda _: self._mark("joints"),
             10,
         )
         self._status_subscription = self.create_subscription(

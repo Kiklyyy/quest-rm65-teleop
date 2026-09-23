@@ -61,6 +61,13 @@ bool is_fresh(bool received, const TimePointT & stamp, double timeout_seconds)
   return std::chrono::duration<double>(SteadyClock::now() - stamp).count() <= timeout_seconds;
 }
 
+template<typename TimePointT>
+double age_ms(bool received, const TimePointT & stamp)
+{
+  if (!received) return -1.0;
+  return std::chrono::duration<double, std::milli>(SteadyClock::now() - stamp).count();
+}
+
 bool finite_position(const geometry_msgs::msg::PoseStamped & pose)
 {
   return std::isfinite(pose.pose.position.x) && std::isfinite(pose.pose.position.y) &&
@@ -236,6 +243,7 @@ public:
       [this](const std_srvs::srv::Trigger::Request::SharedPtr,
         std_srvs::srv::Trigger::Response::SharedPtr response) {
         response->success = logic_->clear_fault(deadman_pressed_);
+        if (response->success) ++rearm_count_;
         response->message = response->success ?
           "fault cleared; release-to-press rearm still required" :
           "clear rejected: no fault or deadman is pressed";
@@ -311,6 +319,8 @@ private:
       make_home_trajectory_plan(joint_positions_, home_config_->trajectory).has_value();
     if (!home_events_.empty()) {
       input.home_action_event = home_events_.front();
+      last_home_event_ = input.home_action_event;
+      home_cancel_pending_ = false;
       home_events_.pop_front();
     }
     input.dt_seconds = dt;
@@ -325,11 +335,21 @@ private:
     if (previous == AdapterState::ACTIVE && output.state != AdapterState::ACTIVE) {
       orientation_tracker_->end_active_session();
     }
+    if (output.state != previous && output.state == AdapterState::REARM_REQUIRED) {
+      ++rearm_count_;
+    }
+    if ((output.state != previous && output.reason == "input_not_fresh") ||
+        (output.home_cancel_requested && output.reason.rfind("home_", 0) == 0 &&
+         output.reason.find("_not_fresh") != std::string::npos)) {
+      ++watchdog_count_;
+    }
     if (output.state != previous) {
       RCLCPP_INFO(get_logger(), "state %s -> %s (%s)", state_name(previous),
         state_name(output.state), output.reason.empty() ? "ok" : output.reason.c_str());
     }
     if (output.home_goal_requested) {
+      last_home_event_ = HomeActionEvent::NONE;
+      home_cancel_pending_ = false;
       const auto plan = home_config_ ?
         make_home_trajectory_plan(joint_positions_, home_config_->trajectory) :
         std::optional<HomeTrajectoryPlan>{};
@@ -338,7 +358,10 @@ private:
         publish_stop();
       }
     }
-    if (output.home_cancel_requested && home_client_) home_client_->request_cancel();
+    if (output.home_cancel_requested && home_client_) {
+      home_cancel_pending_ = true;
+      home_client_->request_cancel();
+    }
     if (output.stop_requested) publish_stop();
     if (output.command.has_value() && output.state == AdapterState::ACTIVE) {
       geometry_msgs::msg::PoseStamped preview;
@@ -361,6 +384,23 @@ private:
 
   void publish_status(const CycleInput & input, const CycleOutput & output)
   {
+    std::string home_action_state = "DISABLED";
+    if (home_client_) {
+      if (output.state == AdapterState::HOMING) {
+        home_action_state = home_cancel_pending_ ? "CANCELING" :
+          home_client_->goal_accepted() ? "ACTIVE" : "PENDING";
+      } else if (last_home_event_ == HomeActionEvent::SUCCEEDED) {
+        home_action_state = "SUCCEEDED";
+      } else if (last_home_event_ == HomeActionEvent::CANCELED) {
+        home_action_state = "CANCELED";
+      } else if (last_home_event_ == HomeActionEvent::REJECTED) {
+        home_action_state = "REJECTED";
+      } else if (last_home_event_ == HomeActionEvent::ABORTED) {
+        home_action_state = "ABORTED";
+      } else {
+        home_action_state = home_client_->server_ready() ? "IDLE" : "SERVER_UNAVAILABLE";
+      }
+    }
     std::ostringstream stream;
     stream << std::boolalpha << std::fixed << std::setprecision(3)
            << "{\"state\":\"" << state_name(output.state) << "\""
@@ -374,6 +414,16 @@ private:
            << ",\"quest_pose_fresh\":" << input.quest_pose_fresh
            << ",\"inputs_fresh\":" << input.inputs_fresh
            << ",\"robot_fresh\":" << input.robot_fresh
+           << ",\"joint_state_fresh\":" << input.joint_state_fresh
+           << ",\"quest_pose_age_ms\":" << age_ms(quest_pose_received_, quest_pose_time_)
+           << ",\"inputs_age_ms\":" << age_ms(inputs_received_, inputs_time_)
+           << ",\"robot_age_ms\":" << age_ms(robot_received_, robot_time_)
+           << ",\"joint_state_age_ms\":" << age_ms(joint_state_received_, joint_state_time_)
+           << ",\"rearm_count\":" << rearm_count_
+           << ",\"watchdog_count\":" << watchdog_count_
+           << ",\"home_button_pressed\":" << input.home_button_pressed
+           << ",\"home_hold_progress\":" << output.home_hold_progress
+           << ",\"home_action_state\":\"" << home_action_state << "\""
            << ",\"command_path_ready\":" << input.command_path_ready
            << ",\"max_cycle_period_ms\":" << max_cycle_period_seen_ * 1000.0
            << ",\"reason\":\"" << output.reason << "\"}";
@@ -392,6 +442,9 @@ private:
   std::optional<ResolvedHomeConfig> home_config_;
   std::unique_ptr<HomeActionClient> home_client_;
   std::deque<HomeActionEvent> home_events_;
+  HomeActionEvent last_home_event_{HomeActionEvent::NONE};
+  bool home_cancel_pending_{false};
+  std::size_t rearm_count_{0}, watchdog_count_{0};
   bool hardware_mode_{false}, follow_{true}, deadman_pressed_{false};
   bool target_received_{false}, target_valid_{false}, quest_pose_received_{false};
   bool quest_pose_valid_{false}, inputs_received_{false}, robot_received_{false};
