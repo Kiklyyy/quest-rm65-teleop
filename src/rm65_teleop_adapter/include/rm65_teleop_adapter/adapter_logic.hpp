@@ -97,6 +97,7 @@ private:
   double home_hold_elapsed_seconds_{0.0};
   bool home_request_latched_{false};
   bool home_cancel_pending_{false};
+  bool home_rearm_pending_{false};
   Pose3 quest_anchor_;
   QuaternionXyzw quest_orientation_anchor_;
   Pose3 robot_anchor_;

@@ -11,6 +11,16 @@
 当前正式姿态参数恢复为 rotation_scale=1.0、90 deg/s、0.01 rad/cycle、90 deg
 单次 Grip anchor 上限。夹爪、左臂、双臂和完整安全验收仍未完成。
 
+## Right RM65 Home + stability branch (software evidence)
+
+- Branch `feat/recenter-home` locks physical A=`button_lower` (reserved) and B=`button_upper` (Home). Grip `press_middle` remains the 0.60/0.40 teleop deadman.
+- Hardware Home configuration: J1..J6 names `joint1` through `joint6`, target degrees `[-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]`, hold 1.5 s, nominal maximum average joint speed 15 deg/s, action `/right/rm_group_controller/follow_joint_trajectory`.
+- Home starts only from `ARMED` with released Grip, fresh inputs/joints, an available action server, and the existing exclusive command/stop path. `HOMING` suppresses Cartesian output. B release, watchdog/invalid feedback, control-period loss, or command-path loss requests cancel+stop and retains `HOMING` until an action terminal result. Success/cancel requires B release and normal Grip release-to-press reauthorization; reject/abort enters `FAULT`.
+- Four-package worktree build and automated suite: 203 tests, 0 errors, 0 failures, 0 skipped (`/usr/bin/colcon test-result --test-result-base build --all --verbose`).
+- `ROS_DOMAIN_ID=143`, `ROS_LOCALHOST_ONLY=1` synthetic integration: 5 test-only Home goals, 4 cancels (B release, stale Quest pose, invalid joint feedback, shutdown), 1 success, 0 Cartesian commands, 0 real command publishers. A separate dry-run node exposed no real Home action client. No RM driver was started.
+- Whole-branch safety review fixed RED-to-GREEN findings for Home rearm/button race, invalid feedback, command-path and cycle guards, invalid-joint diagnostics, and shutdown cancel+stop delivery.
+- **real RM65 Home validation = pending.** The real Home action was not sent and no real RM65 Home motion was started.
+
 ## Right-arm 6DoF orientation implementation
 
 - quaternion、frame mapping、双姿态锚点、angular limiter 和 orientation safety

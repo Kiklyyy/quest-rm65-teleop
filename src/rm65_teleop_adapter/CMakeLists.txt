@@ -70,6 +70,12 @@ if(BUILD_TESTING)
     PYTHON_EXECUTABLE /usr/bin/python3
     ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1)
   ament_add_pytest_test(
+    test_home_synthetic_probe
+    test/home_synthetic_probe.py
+    PYTHON_EXECUTABLE /usr/bin/python3
+    TIMEOUT 90
+    ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1)
+  ament_add_pytest_test(
     test_motion_profiles
     test/test_motion_profiles.py
     PYTHON_EXECUTABLE /usr/bin/python3

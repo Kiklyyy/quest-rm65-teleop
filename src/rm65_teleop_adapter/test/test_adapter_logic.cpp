@@ -738,13 +738,103 @@ TEST(AdapterLogic, NewHomeRequiresReleaseThenFreshHold)
   input.home_action_event = rm65_teleop_adapter::HomeActionEvent::SUCCEEDED;
   EXPECT_EQ(logic.update(input).state, AdapterState::REARM_REQUIRED);
   input.home_action_event = rm65_teleop_adapter::HomeActionEvent::NONE;
-  EXPECT_EQ(logic.update(input).state, AdapterState::ARMED);
+  EXPECT_EQ(logic.update(input).state, AdapterState::REARM_REQUIRED);
   for (int i=0; i<5; ++i) EXPECT_FALSE(logic.update(input).home_goal_requested);
   input.home_button_pressed = false;
-  logic.update(input);
+  EXPECT_EQ(logic.update(input).state, AdapterState::ARMED);
   input.home_button_pressed = true;
   EXPECT_FALSE(logic.update(input).home_goal_requested);
   EXPECT_FALSE(logic.update(input).home_goal_requested);
   EXPECT_TRUE(logic.update(input).home_goal_requested);
+}
+
+TEST(AdapterLogic, HomeTerminalRequiresButtonAndGripReleaseBeforeTeleop)
+{
+  AdapterLogic logic;
+  auto input = home_ready_input();
+  start_home(logic, input);
+  input.home_action_event = rm65_teleop_adapter::HomeActionEvent::SUCCEEDED;
+  ASSERT_EQ(logic.update(input).state, AdapterState::REARM_REQUIRED);
+  input.home_action_event = rm65_teleop_adapter::HomeActionEvent::NONE;
+  EXPECT_EQ(logic.update(input).state, AdapterState::REARM_REQUIRED);
+  input.enable = true;
+  EXPECT_EQ(logic.update(input).state, AdapterState::REARM_REQUIRED);
+  input.home_button_pressed = false;
+  EXPECT_EQ(logic.update(input).state, AdapterState::REARM_REQUIRED);
+  input.enable = false;
+  EXPECT_EQ(logic.update(input).state, AdapterState::ARMED);
+  input.enable = true;
+  EXPECT_EQ(logic.update(input).state, AdapterState::ACTIVE);
+}
+
+TEST(AdapterLogic, InvalidPoseFeedbackDuringHomeCancelsUntilTerminal)
+{
+  for (int source = 0; source < 2; ++source) {
+    AdapterLogic logic;
+    auto input = home_ready_input();
+    start_home(logic, input);
+    if (source == 0) input.quest_orientation_valid = false;
+    if (source == 1) input.robot_orientation_valid = false;
+    const auto out = logic.update(input);
+    EXPECT_EQ(out.state, AdapterState::HOMING);
+    EXPECT_TRUE(out.home_cancel_requested);
+    EXPECT_TRUE(out.stop_requested);
+    EXPECT_FALSE(out.command);
+  }
+}
+
+TEST(AdapterLogic, HomeRequiresExclusiveCartesianAndStopPath)
+{
+  AdapterLogic logic;
+  auto input = home_ready_input();
+  input.home_button_pressed = false;
+  ASSERT_EQ(logic.update(input).state, AdapterState::ARMED);
+  input.home_button_pressed = true;
+  input.command_path_ready = false;
+  for (int i=0; i<4; ++i) {
+    EXPECT_FALSE(logic.update(input).home_goal_requested);
+    EXPECT_EQ(logic.state(), AdapterState::ARMED);
+  }
+  input.command_path_ready = true;
+  for (int i=0; i<3; ++i) logic.update(input);
+  ASSERT_EQ(logic.state(), AdapterState::HOMING);
+  input.command_path_ready = false;
+  const auto out = logic.update(input);
+  EXPECT_EQ(out.state, AdapterState::HOMING);
+  EXPECT_TRUE(out.home_cancel_requested);
+  EXPECT_TRUE(out.stop_requested);
+}
+
+TEST(AdapterLogic, HomeControlPeriodGuardBlocksAndCancels)
+{
+  AdapterLogic logic;
+  auto input = home_ready_input();
+  input.home_button_pressed = false;
+  ASSERT_EQ(logic.update(input).state, AdapterState::ARMED);
+  input.home_button_pressed = true;
+  input.control_period_valid = false;
+  for (int i=0; i<4; ++i) EXPECT_FALSE(logic.update(input).home_goal_requested);
+  input.control_period_valid = true;
+  for (int i=0; i<3; ++i) logic.update(input);
+  ASSERT_EQ(logic.state(), AdapterState::HOMING);
+  input.control_period_valid = false;
+  const auto out = logic.update(input);
+  EXPECT_EQ(out.state, AdapterState::HOMING);
+  EXPECT_TRUE(out.home_cancel_requested);
+  EXPECT_TRUE(out.stop_requested);
+}
+
+TEST(AdapterLogic, RejectedAndAbortedHomeIssueStop)
+{
+  for (auto event : {rm65_teleop_adapter::HomeActionEvent::REJECTED,
+                     rm65_teleop_adapter::HomeActionEvent::ABORTED}) {
+    AdapterLogic logic;
+    auto input = home_ready_input();
+    start_home(logic, input);
+    input.home_action_event = event;
+    const auto out = logic.update(input);
+    EXPECT_EQ(out.state, AdapterState::FAULT);
+    EXPECT_TRUE(out.stop_requested);
+  }
 }
 }  // namespace

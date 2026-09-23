@@ -128,27 +128,40 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
     output.home_hold_progress = 1.0;
     if (input.home_action_event == HomeActionEvent::SUCCEEDED) {
       home_cancel_pending_ = false;
-      enter_rearm(input.enable, "home_succeeded");
+      home_rearm_pending_ = true;
+      enter_rearm(true, "home_succeeded");
     } else if (input.home_action_event == HomeActionEvent::CANCELED) {
       home_cancel_pending_ = false;
-      enter_rearm(input.enable, fault_reason_.empty() ? "home_canceled" : fault_reason_);
+      home_rearm_pending_ = true;
+      enter_rearm(true, fault_reason_.empty() ? "home_canceled" : fault_reason_);
     } else if (input.home_action_event == HomeActionEvent::REJECTED) {
       home_cancel_pending_ = false;
       enter_fault("home_goal_rejected");
+      output.stop_requested = true;
     } else if (input.home_action_event == HomeActionEvent::ABORTED) {
       home_cancel_pending_ = false;
       enter_fault("home_goal_aborted");
+      output.stop_requested = true;
     } else if (!home_cancel_pending_) {
       const char * cancel_reason = nullptr;
       if (!input.home_button_pressed) cancel_reason = "home_button_released";
+      else if (!input.control_period_valid) cancel_reason = "home_control_period_exceeded";
       else if (!input.quest_pose_fresh) cancel_reason = "home_quest_pose_not_fresh";
       else if (!input.inputs_fresh) cancel_reason = "home_inputs_not_fresh";
       else if (!input.robot_fresh) cancel_reason = "home_robot_not_fresh";
+      else if (!input.quest_orientation_valid ||
+               input.quest_orientation_status == OrientationSampleStatus::INVALID ||
+               !normalize_quaternion(input.quest_orientation))
+        cancel_reason = "home_quest_pose_invalid";
+      else if (!input.robot_orientation_valid ||
+               !normalize_quaternion(input.robot_pose.orientation))
+        cancel_reason = "home_robot_pose_invalid";
       else if (!input.joint_state_fresh) cancel_reason = "home_joint_state_not_fresh";
       else if (!input.joint_state_valid) cancel_reason = "home_joint_state_invalid";
       else if (!input.target_fresh) cancel_reason = "home_target_not_fresh";
       else if (!pose_is_finite(input.target_pose) || !pose_is_finite(input.robot_pose))
         cancel_reason = "home_pose_invalid";
+      else if (!input.command_path_ready) cancel_reason = "home_command_path_not_ready";
       else if (!input.home_action_ready) cancel_reason = "home_action_not_ready";
       if (cancel_reason) {
         fault_reason_ = cancel_reason;
@@ -215,7 +228,8 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
       const bool home_ready = input.home_button_pressed && !home_request_latched_ &&
         input.target_fresh && input.quest_pose_fresh && input.inputs_fresh &&
         input.robot_fresh && input.joint_state_fresh && input.joint_state_valid &&
-        input.home_action_ready && input.home_plan_valid &&
+        input.home_action_ready && input.home_plan_valid && input.command_path_ready &&
+        input.control_period_valid &&
         input.quest_orientation_valid && input.robot_orientation_valid &&
         pose_is_finite(input.target_pose) && pose_is_finite(input.robot_pose);
       if (home_ready && std::isfinite(input.dt_seconds) && input.dt_seconds > 0.0) {
@@ -234,8 +248,12 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
       }
     }
   } else if (state_ == AdapterState::REARM_REQUIRED) {
-    if (!input.enable) release_observed_ = true;
-    if (release_observed_ && !input.enable && fresh) {
+    if (home_rearm_pending_ && !input.home_button_pressed) {
+      home_rearm_pending_ = false;
+      release_observed_ = false;
+    }
+    if (!home_rearm_pending_ && !input.enable) release_observed_ = true;
+    if (!home_rearm_pending_ && release_observed_ && !input.enable && fresh) {
       state_ = AdapterState::ARMED;
       fault_reason_.clear();
     }

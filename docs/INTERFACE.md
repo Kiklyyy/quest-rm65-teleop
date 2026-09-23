@@ -9,12 +9,12 @@
 | Topic | 类型 | 当前使用字段 |
 |---|---|---|
 | `/q2r_right_hand_pose` | `geometry_msgs/msg/PoseStamped` | `pose.position.{x,y,z}` 供 bridge 使用；`pose.orientation.{x,y,z,w}` 由 adapter 直接使用 |
-| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `press_middle` |
+| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `press_middle` teleop deadman; `button_upper` Home; `button_lower` reserved |
 
 输入 Pose 的 header、frame 和 stamp 不作为机器人坐标依据。现有
 `quest_right_target_bridge` 仍只处理 position；orientation 不经过该 bridge，而由
 `rm65_teleop_adapter` 直接读取原始 Quest Pose。当前仍不使用摇杆、
-`press_index`、`button_lower` 或 `button_upper`。
+`press_index` remains unused; physical A=`button_lower` is reserved without motion authority; physical B=`button_upper` controls Home.
 
 ### 输出
 
@@ -112,7 +112,8 @@ topic 名称均不属于 motion profile。dry-run 始终只加载 `dry_run.yaml`
 |---|---|---|
 | `/quest_right_target_pose` | `geometry_msgs/msg/PoseStamped` | A 侧映射后的虚拟右手目标，只使用相对平移 |
 | `/q2r_right_hand_pose` | `geometry_msgs/msg/PoseStamped` | 独立 Quest Pose 接收 watchdog；`pose.orientation` 是机器人相对姿态控制的直接输入 |
-| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `press_middle` 迟滞 deadman 与独立 Inputs watchdog |
+| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `press_middle` teleop deadman, `button_upper` Home, independent Inputs watchdog |
+| `/right/joint_states` | `sensor_msgs/msg/JointState` | Home joint positions reordered by name, with independent freshness/validity checks |
 | `/right/rm_driver/udp_arm_position` | `geometry_msgs/msg/Pose` | 机器人真实末端 Pose、锚点和反馈 watchdog |
 
 ### B 侧输出（已实现）
@@ -123,6 +124,7 @@ topic 名称均不属于 motion profile。dry-run 始终只加载 `dry_run.yaml`
 | `/right/rm65_teleop/status` | `std_msgs/msg/String` | 发布状态、freshness、fault 和硬件写入锁状态 |
 | `/right/rm_driver/movep_canfd_cmd` | `rm_ros_interfaces/msg/Cartepos` | 仅非 dry-run、硬件写入显式启用、现场映射确认且状态为 ACTIVE |
 | `/right/rm_driver/move_stop_cmd` | `std_msgs/msg/Empty` | 真机 ACTIVE 退出或 watchdog/fault 时 |
+| `/right/rm_group_controller/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | Hardware Home only while `HOMING`; cancel terminal result required before teleop rearm |
 
 dry-run 默认值：
 
@@ -249,3 +251,13 @@ driver 必须以 `/right` namespace 和右臂参数单独启动。启动 driver 
 现场操作者确认：真实 Quest 右手柄已经通过当前 A+B 链路驱动右 RM65 产生实际运动，说明“Quest → ROS2 → target bridge → RM65 adapter → 右 RM65”平移链路已首次端到端打通。
 
 这只证明首次真机运动链路成立；尚不等于旋转、左臂、夹爪、所有断流场景、最终停止余量或完整安全验收已完成。
+
+## Right-arm Home interface (software complete, real-arm validation pending)
+
+- Physical A=`button_lower` is reserved. Physical B=`button_upper` is selected by `home_button_field: upper`. Grip remains the `press_middle >=0.60` / `<=0.40` teleop deadman; a new Grip press recaptures Quest/RM anchors.
+- `hardware.yaml` has `home_enabled: true`; `dry_run.yaml` has `home_enabled: false`. A separate dry-run node graph check found no real Home action client. Isolated synthetic testing uses only `/test/home/*` topics/action and starts no RM driver.
+- Temporary target in degrees, ordered `joint1` through `joint6`: `[-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]`. `home_hold_seconds: 1.5`; `home_speed_deg_s: 15.0`. Joint target/names, hold, and speed are startup parameters. JointState is reordered by name; missing/duplicate names, length mismatch, NaN, or Inf block Home.
+- Home starts only from `ARMED`, with Grip released, B held continuously for 1.5 s, fresh/valid inputs and joints, an available action server, and an exclusive command/stop path. Farthest joint angular distance / 15 deg/s sets the nominal synchronized duration; a 0.1 s minimum only reduces average speed.
+- `HOMING` permits only this joint action and emits no `/right/rm_driver/movep_canfd_cmd`. B release, input/joint watchdog, invalid feedback, or exclusive-path/control-period failure requests cancel+stop; `HOMING` persists until the action terminal result. Success or acknowledged cancel -> `REARM_REQUIRED`, followed by B release and Grip release-to-press. Rejection or abort -> `FAULT`.
+- `/right/rm65_teleop/status` retains `state`, `deadman_pressed`, `command_path_ready`, and `reason`; adds `quest_pose_age_ms`, `inputs_age_ms`, `robot_age_ms`, `joint_state_age_ms`, `rearm_count`, `watchdog_count`, `home_button_pressed`, `home_hold_progress`, and `home_action_state`. The read-only monitor displays `JOINTS=OK|LOST` and concise `HOME` state.
+- Complete automated result: 203 tests, 0 errors, 0 failures, 0 skipped. Synthetic result: 5 test-action goals, 4 cancels, 1 success, 0 Cartesian hardware commands. **real RM65 Home validation = pending**.

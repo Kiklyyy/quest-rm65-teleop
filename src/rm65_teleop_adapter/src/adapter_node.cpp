@@ -5,6 +5,7 @@
 #include "rm65_teleop_adapter/quest_orientation_tracker.hpp"
 
 #include <algorithm>
+#include <csignal>
 #include <chrono>
 #include <cmath>
 #include <functional>
@@ -260,14 +261,24 @@ public:
 
   ~AdapterNode() override
   {
+    if (!shutting_down_) prepare_shutdown();
+  }
+
+  void prepare_shutdown()
+  {
+    if (shutting_down_) return;
+    shutting_down_ = true;
+    if (control_timer_) control_timer_->cancel();
     if (!hardware_mode_ || !logic_) return;
-    if (logic_->state() == AdapterState::HOMING ||
-        (home_client_ && home_client_->goal_active())) {
-      if (home_client_) home_client_->request_cancel();
-      publish_stop();
-    } else if (logic_->state() == AdapterState::ACTIVE) {
-      publish_stop();
-    }
+    const bool home_in_progress = logic_->state() == AdapterState::HOMING ||
+      (home_client_ && home_client_->goal_active());
+    if (home_in_progress && home_client_) home_client_->request_cancel();
+    if (home_in_progress || logic_->state() == AdapterState::ACTIVE) publish_stop();
+  }
+
+  bool home_goal_in_flight() const
+  {
+    return home_client_ && home_client_->goal_active();
   }
 
 private:
@@ -310,7 +321,7 @@ private:
     input.robot_orientation_valid = robot_orientation_valid_;
     input.command_path_ready = command_path_ready();
     input.home_button_pressed = home_button_pressed_;
-    input.joint_state_fresh = home_enabled_ && joint_state_valid_ &&
+    input.joint_state_fresh = home_enabled_ &&
       is_fresh(joint_state_received_, joint_state_time_, joint_state_timeout_);
     input.joint_state_valid = joint_state_valid_;
     input.home_action_ready = home_client_ && home_client_->server_ready() &&
@@ -376,7 +387,8 @@ private:
         command_publisher_->publish(command);
       }
     }
-    if (std::chrono::duration<double>(now - last_status_time_).count() >= 0.10) {
+    if (output.state != previous ||
+        std::chrono::duration<double>(now - last_status_time_).count() >= 0.10) {
       publish_status(input, output);
       last_status_time_ = now;
     }
@@ -444,6 +456,7 @@ private:
   std::deque<HomeActionEvent> home_events_;
   HomeActionEvent last_home_event_{HomeActionEvent::NONE};
   bool home_cancel_pending_{false};
+  bool shutting_down_{false};
   std::size_t rearm_count_{0}, watchdog_count_{0};
   bool hardware_mode_{false}, follow_{true}, deadman_pressed_{false};
   bool target_received_{false}, target_valid_{false}, quest_pose_received_{false};
@@ -474,11 +487,32 @@ private:
 };
 }  // namespace rm65_teleop_adapter
 
+namespace
+{
+volatile std::sig_atomic_t shutdown_signal = 0;
+void request_shutdown_signal(int) {shutdown_signal = 1;}
+}
+
 int main(int argc, char ** argv)
 {
-  rclcpp::init(argc, argv);
+  rclcpp::init(argc, argv, rclcpp::InitOptions{}, rclcpp::SignalHandlerOptions::None);
+  std::signal(SIGINT, request_shutdown_signal);
+  std::signal(SIGTERM, request_shutdown_signal);
   try {
-    rclcpp::spin(std::make_shared<rm65_teleop_adapter::AdapterNode>());
+    auto node = std::make_shared<rm65_teleop_adapter::AdapterNode>();
+    rclcpp::executors::SingleThreadedExecutor executor;
+    executor.add_node(node);
+    while (rclcpp::ok() && !shutdown_signal) {
+      executor.spin_once(std::chrono::milliseconds(20));
+    }
+    node->prepare_shutdown();
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (rclcpp::ok() && node->home_goal_in_flight() &&
+           std::chrono::steady_clock::now() < deadline) {
+      executor.spin_once(std::chrono::milliseconds(10));
+    }
+    executor.remove_node(node);
+    node.reset();
   } catch (const std::exception & exception) {
     RCLCPP_FATAL(rclcpp::get_logger("rm65_teleop_adapter"), "%s", exception.what());
     rclcpp::shutdown();

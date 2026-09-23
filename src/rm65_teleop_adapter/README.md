@@ -14,10 +14,9 @@ Dry-run:
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py
 ```
 
-Hardware mode (translation has prior field evidence; orientation does not):
+Hardware mode (real Home validation remains pending):
 
-> **Hardware warning:** Automated success does not authorize real robot rotation.
-> Complete the live Quest probe and obtain explicit authorization for staged RM65 validation first.
+> **Hardware warning:** real RM65 Home validation = pending. Synthetic Home evidence is not real-arm acceptance.
 
 ```bash
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py mode:=hardware
@@ -49,8 +48,7 @@ workspace, control timing, follow/stop behavior, and topic names remain in
 
 Normal profile hardware example:
 
-> **Hardware warning:** The `normal` translation tuning evidence does not verify
-> orientation; automated success does not authorize real robot rotation.
+> **Hardware warning:** The `normal` profile field evidence does not validate the new Home operation.
 
 ```bash
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
@@ -71,8 +69,7 @@ review, not a recommended safety boundary.
 
 Fast profile hardware example:
 
-> **Hardware warning:** `fast` is unverified for hardware use, and automated
-> orientation success does not authorize real robot rotation.
+> **Hardware warning:** `fast` is unverified for hardware use; Home also awaits manual validation.
 
 ```bash
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
@@ -118,7 +115,7 @@ commands. It prints immediately when the summary changes and otherwise about
 once per second, for example:
 
 ```text
-[teleop] QUEST=OK INPUTS=OK TARGET=OK ROBOT=OK STATE=ARMED DEADMAN=OFF CMD=OK
+[teleop] QUEST=OK INPUTS=OK TARGET=OK ROBOT=OK JOINTS=OK STATE=ARMED DEADMAN=OFF CMD=OK HOME=IDLE
 ```
 
 Malformed or stale adapter status is shown as `STATE=UNKNOWN` rather than
@@ -197,15 +194,61 @@ velocity limit, 0.05 mm per-step limit, and 3 cm anchor radius. Translation
 mapping, motion profiles, workspace, deadman thresholds, watchdogs and command
 path remain unchanged. Dry-run remains the default launch mode.
 
+## Hold-to-run right Home
+
+Physical A maps to `button_lower` and remains reserved. Physical B maps to
+`button_upper` and selects Home through `home_button_field: upper`. Grip
+`press_middle` remains the teleop deadman with 0.60/0.40 hysteresis. Releasing
+and repressing Grip remains the actual Quest/RM re-anchor gesture.
+
+The temporary six-joint target is configured in `hardware.yaml` in degrees:
+`[-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]`, ordered by
+`joint1` through `joint6`. The adapter reorders incoming JointState positions
+by name and rejects missing, duplicate, non-finite, or mismatched samples.
+The one-point trajectory duration is the farthest joint angular distance
+divided by `home_speed_deg_s: 15.0`, with a minimum of 0.1 s that only slows
+near-Home motion.
+
+Only `ARMED` with released Grip, fresh/valid inputs and joints, an available
+action server, and an exclusive command/stop path can start Home. B must stay
+pressed for `home_hold_seconds: 1.5` before the one-shot goal is sent to
+`/right/rm_group_controller/follow_joint_trajectory`. `HOMING` never publishes
+Cartesian `movep_canfd_cmd`. B release or watchdog/feedback/path loss requests
+cancel+stop, and `HOMING` persists until the action reaches a terminal result.
+Success or acknowledged cancel enters `REARM_REQUIRED`; B release and normal
+Grip release-to-press are required before Cartesian teleop. Rejection/abort
+enters `FAULT` and sends stop.
+
+`dry_run.yaml` has `home_enabled: false`; it creates no real Home action client.
+The isolated synthetic probe uses `ROS_DOMAIN_ID=143`, localhost-only and
+`/test/home/*` endpoints. Its result was 5 test-only goals, 4 cancels, 1
+success, 0 Cartesian commands, and 0 real command publishers. **real RM65
+Home validation = pending.** No RM driver or real Home goal was started in this
+validation. A separate dry-run node graph check found no real Home action
+client and no real Cartesian command publisher.
+
+The status JSON adds input ages, joint age/health, Home button/hold/action
+state, and rearm/watchdog counts. The read-only monitor shows `JOINTS` and
+`HOME`; it never participates in control.
+
 ## Build and test
 
+Use system Python and the isolated worktree:
+
 ```bash
+conda deactivate 2>/dev/null || true
 source /opt/ros/humble/setup.bash
 source /home/lh/robot/install/setup.bash
-colcon build --packages-select rm65_teleop_adapter
-colcon test --packages-select rm65_teleop_adapter
-colcon test-result --verbose
+export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+/usr/bin/colcon --log-base log build --build-base build --install-base install \
+  --symlink-install --packages-select quest2ros ros_tcp_endpoint q2r2_bringup rm65_teleop_adapter
+/usr/bin/colcon --log-base log test --build-base build --install-base install \
+  --packages-select quest2ros ros_tcp_endpoint q2r2_bringup rm65_teleop_adapter \
+  --event-handlers console_direct+
+/usr/bin/colcon test-result --test-result-base build --all --verbose
 ```
+
+Observed complete result: 203 tests, 0 errors, 0 failures, 0 skipped.
 
 ## Run dry-run
 
@@ -234,18 +277,18 @@ kill "$adapter_pid"
 wait "$adapter_pid" 2>/dev/null || true
 ```
 
-This probe verifies software preview behavior and zero hardware-command
-publishers only. Live Quest quaternion probing and real RM65 rotation remain
-pending.
+This older probe verifies software preview behavior and zero hardware-command
+publishers only. Live Quest quaternion and qualitative real RM65 orientation
+evidence are recorded in `STATUS.md`; real RM65 Home validation remains pending.
 
 ## Run hardware mode
 
 Only after the right-arm driver, workspace, emergency stop, unique command source,
 and live Quest inputs have been checked:
 
-> **Hardware warning:** Automated and synthetic dry-run success does not
-> authorize real robot rotation. Live Quest validation and an explicitly
-> authorized staged RM65 procedure are still required.
+> **Hardware warning:** real RM65 Home validation = pending. The operator must
+> separately accept the temporary Home posture, mid-motion B-release stop, and
+> post-Home reauthorization before treating Home as field-validated.
 
 ```bash
 ros2 launch rm65_teleop_adapter hardware.launch.py
