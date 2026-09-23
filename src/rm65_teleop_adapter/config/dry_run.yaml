@@ -3,6 +3,7 @@ rm65_teleop_adapter:
     dry_run: true
     hardware_write_enabled: false
     mapping_verified: true
+    home_enabled: false
     control_rate_hz: 200.0
     max_control_period: 0.010
     mapping: [0.0, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0, -1.0, 0.0]
