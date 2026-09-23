@@ -7,7 +7,10 @@
 - 新增 `rotation_scale=1.0`、`max_angular_velocity_rad_s=1.5707963267948966`、`max_angular_step_rad=0.01`、`max_anchor_angle_rad=1.5707963267948966`、`unexpected_orientation_jump_rad=0.7853981633974483`。
 - 新增 quaternion math、Quest orientation tracker、anchoring/mapping/limiter/safety/config tests，以及 adapter-only `ROS_DOMAIN_ID=142` synthetic dry-run probe。
 - 保持 translation bridge、translation mapping、motion profiles、workspace、deadman、watchdogs、stop/rearm 和单一 Pose command path 不变。
-- 自动化测试与 synthetic dry-run 已验证；live Quest quaternion probe 仍 pending，real RM65 rotation 尚未运行且 not verified。
+- 自动化测试与 synthetic dry-run 已验证。
+- 真实 Quest live orientation mapping 已完成现场验证：约 70.7–72.1 Hz，quaternion norm 接近 1，未出现 NaN/Inf；首次 Grip 与 repress 均无姿态跳变，release 后不再发布 preview；自然观察到 202 次 q/-q sign flip，shortest-path 处理正常。
+- 真实右 RM65 已完成首次 orientation smoke test。先用临时低速 envelope 验证，再恢复批准的 V1 正式姿态参数（1:1、90 deg/s、0.01 rad/cycle、90 deg anchor）；操作者反馈恢复后跟手性明显改善并接受进入下一阶段。
+- 真机姿态结果目前仍为定性现场验收，未系统量化逐轴 tracking error、overshoot、stopping distance、长时间 jitter 或 repeatability。
 
 ## 2026-09-21 — Middle-grip teleop deadman
 
