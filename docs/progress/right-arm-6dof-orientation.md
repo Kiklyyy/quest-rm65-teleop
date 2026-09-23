@@ -124,18 +124,54 @@ deadman thresholds, watchdogs, follow/control timing, stop behavior and
 only possible publisher to `/right/rm_driver/movep_canfd_cmd`, and dry-run
 creates no publisher for that topic.
 
-## Pending human validation
+## Live Quest validation
 
-- live Quest quaternion probe = pending
-- real RM65 rotation = not verified
-- RM driver was not started for this implementation run
-- real RM65 was not controlled for this implementation run
+Human-assisted live Quest dry-run was completed without RM driver or real robot
+motion and accepted by the operator.
 
-A later explicitly authorized session must first confirm live Quest stability,
-continuity, norm, `q/-q` behavior and preview directions. Only after acceptance
-may a no-tool/no-payload RM65 test proceed through approximately +/-5 degree,
-+/-10 degree, individual axes, combined rotation, then simultaneous translation
-and rotation.
+- `/q2r_right_hand_pose`: about 70.7–72.1 Hz
+- raw quaternion norm range: 0.9999999753–1.0000000714
+- maximum observed adjacent-sample angular change in the stillness window: 1.9324 deg
+- invalid raw/preview quaternion samples: 0 across 50,064 raw and 43,413 preview samples
+- first Grip ACTIVE orientation error: 0.0 deg
+- release: `preview_after_release=0`
+- repress first-frame orientation error: 0.0 deg
+- naturally observed q/-q sign flips: 202; minimum raw dot -0.9999999993
+- sign flips produced no preview jump and no orientation-jump fault
+- two principal live wrist-rotation traces produced expected-preview orientation
+  error of 0.0 deg; one additional 2.037 deg re-anchor stability sample also matched
+- no orientation fault occurred; two existing `input_not_fresh` watchdog events
+  safely entered `REARM_REQUIRED`
+- hardware command publisher count remained 0 and RM driver was not started
+
+The originally planned third independent 10–20 deg live rotation was explicitly
+waived by the human operator after two accepted rounds; no substitute data is
+claimed for that omitted action.
+
+## Real RM65 qualitative validation
+
+After the live Quest gate passed, the operator performed a real right-RM65
+orientation smoke test. The first hardware trial used a temporary conservative
+orientation envelope. After the operator reported the motion felt correct, the
+temporary override was removed and the approved V1 values were restored:
+
+- `rotation_scale=1.0`
+- `max_angular_velocity_rad_s=1.5707963267948966` (90 deg/s)
+- `max_angular_step_rad=0.01`
+- `max_anchor_angle_rad=1.5707963267948966` (90 deg)
+
+The operator reported the restored V1 response was substantially more responsive
+and acceptable for continued development. This is a qualitative field acceptance,
+not a quantitative tracking/safety characterization: no complete per-axis table of
+commanded-vs-feedback angle, overshoot, stopping distance, long-duration jitter, or
+repeatability was recorded in this session.
+
+## Remaining validation
+
+- quantitative real-RM65 orientation tracking error by axis
+- overshoot, stopping distance, long-duration stillness/jitter and repeatability
+- systematic combined-rotation and simultaneous translation+rotation measurements
+- longer-duration watchdog/network robustness and workspace/collision safety
 
 ## Checkpoint commits
 
