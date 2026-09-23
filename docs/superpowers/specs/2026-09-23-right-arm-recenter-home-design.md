@@ -13,9 +13,9 @@ The design must preserve one-control-source-at-a-time semantics. Cartesian Quest
 ## 2. Agreed operator controls
 
 - Middle-finger Grip remains the teleoperation deadman.
-- The Quest A button is reserved for Recenter behavior.
-- The Quest B button is used for Home.
-- A/B must not be bound to `button_upper` or `button_lower` by assumption. A short live Quest input probe must establish the physical mapping before implementation locks the binding.
+- The Quest A button is reserved for Recenter behavior and is confirmed as `button_lower`.
+- The Quest B button is used for Home and is therefore `button_upper` in the current `OVR2ROSInputs` face-button pair.
+- No additional A/B mapping probe is required for this feature; implementation must preserve this confirmed mapping.
 - Home requires B to be held continuously. A B hold shorter than 1.5 s does not start Home.
 - Home can start only while Grip is released and the adapter is in `ARMED`.
 
@@ -66,7 +66,19 @@ Home uses the existing right-arm FollowJointTrajectory action:
 
 Home does not use Cartesian `movep_canfd_cmd`.
 
-The implementation uses the right-arm joint names from the established right-arm interface / `/right/joint_states` ordering and converts configured degrees to radians before building the trajectory.
+The implementation uses the confirmed right-arm joint names below and converts configured degrees to radians before building the trajectory:
+
+```yaml
+home_joint_names:
+  - joint1
+  - joint2
+  - joint3
+  - joint4
+  - joint5
+  - joint6
+```
+
+Incoming `/right/joint_states` data must still be reordered by name rather than trusting message array order.
 
 The nominal trajectory duration is based on the farthest joint displacement:
 
@@ -167,20 +179,18 @@ The Home action client must not be implemented as an independent node that can c
 
 Entering Home is only possible from `ARMED`, so there is no need to switch directly from a live Cartesian stream to a joint trajectory.
 
-## 8. Input mapping probe
+## 8. Confirmed input mapping
 
-Before the A/B binding is committed, use the real Quest in a no-motion/dry-run context and observe `/q2r_right_hand_inputs`.
+The operator has confirmed the right-controller face-button mapping used by this project:
 
-The probe must determine which physical button changes:
-
-- `button_upper`
-- `button_lower`
-
-for physical A and B.
-
-The result is documented and covered by tests. If the physical mapping is ambiguous, implementation stops rather than guessing.
+```text
+Physical A -> button_lower
+Physical B -> button_upper
+```
 
 The existing Grip mapping to `press_middle` is unchanged.
+
+Implementation must cover this mapping in tests and must not re-purpose `button_lower` for Home.
 
 ## 9. Stability and observability closeout
 
@@ -294,7 +304,7 @@ This feature does not add:
 
 The feature is accepted when:
 
-- physical B mapping is verified rather than assumed
+- physical A/B mapping is fixed as A=`button_lower`, B=`button_upper` and covered by tests
 - Home configuration is parameterized
 - B hold-to-run Home works through the right FollowJointTrajectory action
 - B release/watchdog/action failure cancels safely
