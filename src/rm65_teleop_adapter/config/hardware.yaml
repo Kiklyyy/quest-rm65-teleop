@@ -3,6 +3,7 @@ rm65_teleop_adapter:
     dry_run: false
     hardware_write_enabled: true
     mapping_verified: true
+    home_button_field: upper
     control_rate_hz: 200.0
     max_control_period: 0.050
     follow: false
