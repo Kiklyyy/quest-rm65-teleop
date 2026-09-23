@@ -1,14 +1,15 @@
 # Project Status
 
-更新日期：2026-09-22
+更新日期：2026-09-23
 
 ## 当前总体阶段
 
 右手 Quest 到右 RM65 的**平移 demo 已首次端到端打通**。现场已确认真实 Quest 能通过 ROS2、right target bridge 和 `rm65_teleop_adapter` 驱动右 RM65 产生实际运动。
 
-右臂 6DoF orientation extension 已完成自动化验证和隔离 synthetic dry-run
-preview 验证。该结论不是 live Quest quaternion 验证，也不是实际 RM65 旋转验证；
-夹爪、左臂、双臂和完整安全验收仍未完成。
+右臂 6DoF orientation extension 已完成自动化验证、隔离 synthetic dry-run、
+真实 Quest live quaternion/preview 验证，以及实际右 RM65 的首次人工姿态跟随测试。
+当前正式姿态参数恢复为 rotation_scale=1.0、90 deg/s、0.01 rad/cycle、90 deg
+单次 Grip anchor 上限。夹爪、左臂、双臂和完整安全验收仍未完成。
 
 ## Right-arm 6DoF orientation implementation
 
@@ -19,8 +20,16 @@ preview 验证。该结论不是 live Quest quaternion 验证，也不是实际 
 - `ROS_DOMAIN_ID=142`、`ROS_LOCALHOST_ONLY=1` 的 adapter-only synthetic
   dry-run 已验证 preview 的轴映射、同时平移/旋转、release/repress 无跳变，并确认
   `/right/rm_driver/movep_canfd_cmd` publisher count 为 0；
-- live Quest quaternion probe = pending；
-- real RM65 rotation = not verified，本轮没有启动 RM driver 或控制真实机械臂。
+- live Quest quaternion probe 已通过：/q2r_right_hand_pose 实测约 70.7–72.1 Hz，
+  quaternion norm 约 0.9999999753–1.0000000714；未观察到 NaN/Inf；
+- 首次 Grip ACTIVE 与 repress 首帧 orientation error 均为 0.0°，release 后
+  preview_after_release=0；
+- live session 自然观察到 202 次 q/-q sign flip，shortest-path 处理未造成 preview
+  跳变或 orientation jump fault；
+- 两段主要真实手腕旋转的 expected-preview orientation error 均为 0.0°；
+- real RM65 orientation 已进行现场人工 smoke test。首次以临时低速 envelope 验证后，
+  恢复正式 V1 姿态参数，操作者反馈跟手性明显改善并认为当前表现可接受。该硬件结果
+  目前仍是定性人工验收，没有保存逐轴精确角度、跟踪误差、overshoot 或停止距离数据。
 
 ## V0.2 启动与观察体验
 
@@ -48,8 +57,9 @@ preview 验证。该结论不是 live Quest quaternion 验证，也不是实际 
 - 隔离硬件模式联调已完成，模拟 command/stop 与正式真机 topic 隔离。
 - **首次真实 Quest → 右 RM65 真机平移运动已经现场成功。**
 - raw Quest orientation 直接进入 adapter 的 6DoF 相对姿态链路已经实现；使用
-  world-frame delta、已确认矩阵共轭、robot anchor 左乘和 shortest-path SLERP，
-  但仅有自动化与 synthetic dry-run 证据。
+  world-frame delta、已确认矩阵共轭、robot anchor 左乘和 shortest-path SLERP。
+- **真实 Quest live orientation mapping 已现场通过；真实右 RM65 姿态 smoke test
+  已完成并由现场操作者接受。**
 
 ## 当前 deadman 输入
 
@@ -88,8 +98,9 @@ field-tested tuning value / pending workspace and stopping-margin review，不�
 
 ## 尚未完成/仍需验证
 
-- live Quest quaternion 稳定性、连续性、norm、`q/-q` 与 preview 方向 probe。
-- 真实 RM65 单轴、组合及 translation + rotation 分阶段验证。
+- 真实 RM65 orientation 的定量验收：逐轴精确角度、tracking error、overshoot、
+  stopping distance、长时间静止抖动和更长时间连续运行记录。
+- 更系统的组合 rotation 与 translation + rotation 定量验证。
 - 夹爪。
 - 左臂与双臂。
 - 全部真实断流场景和长期网络抖动。
