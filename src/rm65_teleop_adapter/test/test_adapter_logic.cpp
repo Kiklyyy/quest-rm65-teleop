@@ -599,4 +599,152 @@ TEST(AdapterLogic, ClearOrientationFaultStillRequiresReleaseThenPress)
 }
 
 
+
+CycleInput home_ready_input()
+{
+  auto input = fresh_input();
+  input.home_button_pressed = true;
+  input.joint_state_fresh = true;
+  input.joint_state_valid = true;
+  input.home_action_ready = true;
+  input.home_plan_valid = true;
+  input.dt_seconds = 0.5;
+  return input;
+}
+
+void start_home(AdapterLogic & logic, CycleInput & input)
+{
+  input.enable = false;
+  input.home_button_pressed = false;
+  ASSERT_EQ(logic.update(input).state, AdapterState::ARMED);
+  input.home_button_pressed = true;
+  EXPECT_FALSE(logic.update(input).home_goal_requested);
+  EXPECT_FALSE(logic.update(input).home_goal_requested);
+  const auto started = logic.update(input);
+  ASSERT_EQ(started.state, AdapterState::HOMING);
+  ASSERT_TRUE(started.home_goal_requested);
+}
+
+TEST(AdapterLogic, HomeHoldShorterThanThresholdAndExactlyOnceAtThreshold)
+{
+  AdapterLogic logic;
+  auto input = home_ready_input();
+  input.home_button_pressed = false;
+  ASSERT_EQ(logic.update(input).state, AdapterState::ARMED);
+  input.home_button_pressed = true;
+  EXPECT_EQ(logic.update(input).state, AdapterState::ARMED);
+  EXPECT_EQ(logic.update(input).state, AdapterState::ARMED);
+  const auto output = logic.update(input);
+  EXPECT_EQ(output.state, AdapterState::HOMING);
+  EXPECT_TRUE(output.home_goal_requested);
+  EXPECT_FALSE(logic.update(input).home_goal_requested);
+}
+
+TEST(AdapterLogic, HomeRequiresReleasedGripFreshJointsAndReadyAction)
+{
+  AdapterLogic logic;
+  auto input = home_ready_input();
+  input.home_button_pressed = false;
+  ASSERT_EQ(logic.update(input).state, AdapterState::ARMED);
+  input.home_button_pressed = true;
+  input.joint_state_fresh = false;
+  for (int i=0; i<4; ++i) EXPECT_FALSE(logic.update(input).home_goal_requested);
+  input.joint_state_fresh = true;
+  input.home_action_ready = false;
+  for (int i=0; i<4; ++i) EXPECT_FALSE(logic.update(input).home_goal_requested);
+  input.home_action_ready = true;
+  input.enable = true;
+  EXPECT_EQ(logic.update(input).state, AdapterState::ACTIVE);
+  EXPECT_FALSE(logic.update(input).home_goal_requested);
+}
+
+TEST(AdapterLogic, HomingNeverEmitsCartesianAndGripCannotTakeOver)
+{
+  AdapterLogic logic;
+  auto input = home_ready_input();
+  start_home(logic, input);
+  input.enable = true;
+  input.target_pose.position[0] = 0.03;
+  const auto out = logic.update(input);
+  EXPECT_EQ(out.state, AdapterState::HOMING);
+  EXPECT_FALSE(out.command);
+  EXPECT_FALSE(out.home_goal_requested);
+}
+
+TEST(AdapterLogic, ButtonReleaseRequestsCancelAndWaitsForTerminal)
+{
+  AdapterLogic logic;
+  auto input = home_ready_input();
+  start_home(logic, input);
+  input.home_button_pressed = false;
+  auto out = logic.update(input);
+  EXPECT_EQ(out.state, AdapterState::HOMING);
+  EXPECT_TRUE(out.home_cancel_requested);
+  EXPECT_TRUE(out.stop_requested);
+  EXPECT_FALSE(out.command);
+  out = logic.update(input);
+  EXPECT_EQ(out.state, AdapterState::HOMING);
+  EXPECT_FALSE(out.home_cancel_requested);
+  input.home_action_event = rm65_teleop_adapter::HomeActionEvent::CANCELED;
+  out = logic.update(input);
+  EXPECT_EQ(out.state, AdapterState::REARM_REQUIRED);
+  EXPECT_FALSE(out.command);
+}
+
+TEST(AdapterLogic, HomeWatchdogLossRequestsCancelAndWaits)
+{
+  for (int source=0; source<5; ++source) {
+    AdapterLogic logic;
+    auto input = home_ready_input();
+    start_home(logic, input);
+    if (source==0) input.quest_pose_fresh = false;
+    if (source==1) input.inputs_fresh = false;
+    if (source==2) input.robot_fresh = false;
+    if (source==3) input.joint_state_fresh = false;
+    if (source==4) input.joint_state_valid = false;
+    const auto out = logic.update(input);
+    EXPECT_EQ(out.state, AdapterState::HOMING);
+    EXPECT_TRUE(out.home_cancel_requested);
+    EXPECT_TRUE(out.stop_requested);
+    EXPECT_FALSE(out.command);
+    EXPECT_EQ(logic.update(input).state, AdapterState::HOMING);
+  }
+}
+
+TEST(AdapterLogic, HomeTerminalOutcomesAndHeldButtonCannotRetrigger)
+{
+  for (auto event : {rm65_teleop_adapter::HomeActionEvent::SUCCEEDED,
+                     rm65_teleop_adapter::HomeActionEvent::CANCELED,
+                     rm65_teleop_adapter::HomeActionEvent::REJECTED,
+                     rm65_teleop_adapter::HomeActionEvent::ABORTED}) {
+    AdapterLogic logic;
+    auto input = home_ready_input();
+    start_home(logic, input);
+    input.home_action_event = event;
+    auto out = logic.update(input);
+    EXPECT_EQ(out.state, (event == rm65_teleop_adapter::HomeActionEvent::SUCCEEDED ||
+                           event == rm65_teleop_adapter::HomeActionEvent::CANCELED) ?
+                        AdapterState::REARM_REQUIRED : AdapterState::FAULT);
+    input.home_action_event = rm65_teleop_adapter::HomeActionEvent::NONE;
+    for (int i=0; i<5; ++i) EXPECT_FALSE(logic.update(input).home_goal_requested);
+  }
+}
+
+TEST(AdapterLogic, NewHomeRequiresReleaseThenFreshHold)
+{
+  AdapterLogic logic;
+  auto input = home_ready_input();
+  start_home(logic, input);
+  input.home_action_event = rm65_teleop_adapter::HomeActionEvent::SUCCEEDED;
+  EXPECT_EQ(logic.update(input).state, AdapterState::REARM_REQUIRED);
+  input.home_action_event = rm65_teleop_adapter::HomeActionEvent::NONE;
+  EXPECT_EQ(logic.update(input).state, AdapterState::ARMED);
+  for (int i=0; i<5; ++i) EXPECT_FALSE(logic.update(input).home_goal_requested);
+  input.home_button_pressed = false;
+  logic.update(input);
+  input.home_button_pressed = true;
+  EXPECT_FALSE(logic.update(input).home_goal_requested);
+  EXPECT_FALSE(logic.update(input).home_goal_requested);
+  EXPECT_TRUE(logic.update(input).home_goal_requested);
+}
 }  // namespace
