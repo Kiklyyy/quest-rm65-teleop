@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Middle-finger Grip remains the teleoperation deadman and existing release -> press re-anchor behavior remains the only motion recenter operation.
-- Physical A/B mapping must be measured from real Quest input; do not guess `button_upper` versus `button_lower`.
+- Confirmed physical face-button mapping: A=`button_lower`, B=`button_upper`; do not re-probe or reinterpret it.
 - A remains reserved and has no robot-state or motion authority in this feature.
 - Home starts only from `ARMED`, with Grip released, after B has been held continuously for at least `1.5 s`.
 - B must remain held for the entire Home motion; release requests cancel and stop.
@@ -35,21 +35,21 @@
 
 ---
 
-### Task 1: Verify and lock the physical Quest A/B binding
+### Task 1: Lock the confirmed Quest A/B binding
 
 **Files:**
 - Create: `src/rm65_teleop_adapter/include/rm65_teleop_adapter/quest_face_button.hpp`
 - Create: `src/rm65_teleop_adapter/test/test_quest_face_button.cpp`
 - Modify: `src/rm65_teleop_adapter/CMakeLists.txt`
 - Create: `docs/progress/right-arm-recenter-home.md`
-- Later in this task, after the live probe: `src/rm65_teleop_adapter/config/hardware.yaml`
+- Modify: `src/rm65_teleop_adapter/config/hardware.yaml`
 
 **Interfaces:**
 - Produces:
   - `enum class QuestFaceButtonField {UPPER, LOWER};`
   - `std::optional<QuestFaceButtonField> parse_quest_face_button_field(std::string_view value);`
   - `template<typename InputsT> bool quest_face_button_pressed(const InputsT &, QuestFaceButtonField);`
-  - hardware parameter `home_button_field: "upper"|"lower"`, set only from observed physical B mapping.
+  - hardware parameter `home_button_field: "upper"`, because physical B is confirmed as `button_upper`.
 
 - [ ] **Step 1: Write the failing parser/selector tests**
 
@@ -125,33 +125,25 @@ Add the GTest target to CMake.
 
 Run the same focused test. Expected: PASS.
 
-- [ ] **Step 5: Perform the real Quest no-motion A/B probe**
-
-Use the real Quest with the RM driver and hardware adapter **not running**. Source the normal ROS 2 / Quest workspace and observe:
-
-```bash
-ros2 topic echo /q2r_right_hand_inputs
-```
-
-Press only physical A several times, then only physical B several times. Record exactly which field toggles for each physical button.
-
-Acceptance:
-- A and B each map unambiguously to one of `button_upper` / `button_lower`.
-- If the mapping is ambiguous, stop the plan here and do not enable Home.
-
-- [ ] **Step 6: Record the measured mapping and lock only physical B into config**
+- [ ] **Step 5: Lock the confirmed mapping in config and progress docs**
 
 In `docs/progress/right-arm-recenter-home.md`, record:
 
 ```text
-Physical A -> observed message field
-Physical B -> observed message field
-Probe date/time and that RM driver / hardware teleop were not running
+Physical A -> button_lower
+Physical B -> button_upper
+Source: operator-confirmed existing Quest2ROS2 mapping; A was the former pre-trigger deadman button.
 ```
 
-In `hardware.yaml`, add `home_button_field` with the exact observed physical-B literal, `"upper"` or `"lower"`. Do not add an A behavior.
+In `hardware.yaml`, add:
 
-- [ ] **Step 7: Commit**
+```yaml
+home_button_field: upper
+```
+
+Do not add an A behavior.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/rm65_teleop_adapter/include/rm65_teleop_adapter/quest_face_button.hpp         src/rm65_teleop_adapter/test/test_quest_face_button.cpp         src/rm65_teleop_adapter/CMakeLists.txt         src/rm65_teleop_adapter/config/hardware.yaml         docs/progress/right-arm-recenter-home.md
@@ -263,17 +255,21 @@ Rules:
 
 Expected: new test GREEN; existing adapter logic tests unchanged and GREEN.
 
-- [ ] **Step 5: Read the real right joint names without commanding motion**
+- [ ] **Step 5: Lock the confirmed right-arm joint names in config**
 
-With the verified right RM driver connected but no teleop/Home command source active:
+Use the operator-confirmed semantic J1..J6 names:
 
-```bash
-ros2 topic echo /right/joint_states --once
+```yaml
+home_joint_names:
+  - joint1
+  - joint2
+  - joint3
+  - joint4
+  - joint5
+  - joint6
 ```
 
-Record all six exact `name[]` entries in `docs/progress/right-arm-recenter-home.md`.
-
-Set `home_joint_names` in `hardware.yaml` to those six names in J1..J6 semantic order. Do not rely on incidental runtime array order.
+The runtime `JointState` callback must still reorder incoming positions by these names and must reject missing/duplicate names rather than trusting array order.
 
 Also add:
 
@@ -724,8 +720,8 @@ Verify by diff/test:
 - [ ] **Step 5: Update docs with only observed evidence**
 
 Document:
-- measured A/B mapping
-- measured six right joint names
+- confirmed A/B mapping: A=`button_lower`, B=`button_upper`
+- confirmed right joint names: `joint1` through `joint6`
 - Home state/action contract
 - temporary Home target and 15 deg/s
 - automated test counts from actual output
