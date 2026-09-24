@@ -1,5 +1,6 @@
 #include "rm65_teleop_adapter/home_action_client.hpp"
 
+#include <array>
 #include <cmath>
 #include <utility>
 
@@ -26,14 +27,36 @@ bool HomeActionClient::send_goal(const HomeTrajectoryPlan & plan)
   if (in_flight_ || !server_ready() || !std::isfinite(plan.duration_seconds) ||
       plan.duration_seconds <= 0.0) return false;
   for (std::size_t i = 0; i < 6; ++i) {
-    if (plan.joint_names[i].empty() || !std::isfinite(plan.target_radians[i])) return false;
+    if (plan.joint_names[i].empty() || !std::isfinite(plan.current_radians[i]) ||
+        !std::isfinite(plan.target_radians[i])) return false;
   }
   FollowJT::Goal goal;
   goal.trajectory.joint_names.assign(plan.joint_names.begin(), plan.joint_names.end());
-  trajectory_msgs::msg::JointTrajectoryPoint point;
-  point.positions.assign(plan.target_radians.begin(), plan.target_radians.end());
-  point.time_from_start = rclcpp::Duration::from_seconds(plan.duration_seconds);
-  goal.trajectory.points.push_back(point);
+  // RealMan rm_control uses its spline path only when it receives >3 points.
+  // It also indexes all six position, velocity, and acceleration entries.
+  constexpr std::array<double, 4> fractions{{0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0}};
+  for (const double fraction : fractions) {
+    trajectory_msgs::msg::JointTrajectoryPoint point;
+    const double blend = fraction * fraction * (3.0 - 2.0 * fraction);
+    for (std::size_t i = 0; i < 6; ++i) {
+      const double delta = plan.target_radians[i] - plan.current_radians[i];
+      const double position =
+        fraction == 1.0 ? plan.target_radians[i] : plan.current_radians[i] + delta * blend;
+      const double velocity =
+        delta * 6.0 * fraction * (1.0 - fraction) / plan.duration_seconds;
+      const double acceleration =
+        delta * (6.0 - 12.0 * fraction) /
+        (plan.duration_seconds * plan.duration_seconds);
+      if (!std::isfinite(position) || !std::isfinite(velocity) ||
+          !std::isfinite(acceleration)) return false;
+      point.positions.push_back(position);
+      point.velocities.push_back(velocity);
+      point.accelerations.push_back(acceleration);
+    }
+    point.time_from_start = rclcpp::Duration::from_seconds(
+      plan.duration_seconds * fraction);
+    goal.trajectory.points.push_back(std::move(point));
+  }
 
   typename rclcpp_action::Client<FollowJT>::SendGoalOptions options;
   options.goal_response_callback = [this](GoalHandle::SharedPtr handle) {

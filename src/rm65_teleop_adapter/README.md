@@ -205,9 +205,10 @@ The operator-confirmed 2026-09-24 right-arm Home target is configured in `hardwa
 `[68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]`, ordered by
 `joint1` through `joint6`. The adapter reorders incoming JointState positions
 by name and rejects missing, duplicate, non-finite, or mismatched samples.
-The one-point trajectory duration is the farthest joint angular distance
-divided by `home_speed_deg_s: 15.0`, with a minimum of 0.1 s that only slows
-near-Home motion.
+The four-point trajectory runs from current joints to the configured Home
+through a smoothstep path. Its duration is at least 1.5 times the farthest
+joint angular distance divided by `home_speed_deg_s: 15.0`, with a minimum
+of 0.1 s. This accounts for the peak speed of RealMan's cubic interpolation.
 
 Only `ARMED` with released Grip, fresh/valid inputs and joints, an available
 action server, and an exclusive command/stop path can start Home. B must stay

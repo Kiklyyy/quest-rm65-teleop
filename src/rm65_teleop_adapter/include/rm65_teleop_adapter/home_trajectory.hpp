@@ -18,6 +18,7 @@ struct HomeTrajectoryConfig
 struct HomeTrajectoryPlan
 {
   std::array<std::string, 6> joint_names{};
+  std::array<double, 6> current_radians{};
   std::array<double, 6> target_radians{};
   double duration_seconds{0.0};
 };

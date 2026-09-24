@@ -59,7 +59,8 @@ TEST(HomeTrajectory, SpeedBoundAndNearHomeMinimum)
   cfg.target_degrees = {30, 0, 0, 0, 0, 0};
   auto plan = make_home_trajectory_plan({0,0,0,0,0,0}, cfg);
   ASSERT_TRUE(plan);
-  EXPECT_NEAR(plan->duration_seconds, 2.0, 1e-12);
+  EXPECT_NEAR(plan->duration_seconds, 3.0, 1e-12);
+  EXPECT_EQ(plan->current_radians, (std::array<double, 6>{0,0,0,0,0,0}));
   EXPECT_NEAR(plan->target_radians[0], 30.0 * 3.14159265358979323846 / 180.0, 1e-12);
   cfg.target_degrees[0] = 0.001;
   plan = make_home_trajectory_plan({0,0,0,0,0,0}, cfg);
@@ -68,5 +69,17 @@ TEST(HomeTrajectory, SpeedBoundAndNearHomeMinimum)
   EXPECT_GT(plan->duration_seconds, 0.0);
   EXPECT_FALSE(make_home_trajectory_plan(
     {std::numeric_limits<double>::quiet_NaN(),0,0,0,0,0}, cfg));
+}
+
+TEST(HomeTrajectory, KeepsOperatorConfirmedTarget)
+{
+  const auto cfg = valid_config();
+  const auto plan = make_home_trajectory_plan({1,2,3,4,5,6}, cfg);
+  ASSERT_TRUE(plan);
+  EXPECT_EQ(plan->current_radians, (std::array<double, 6>{1,2,3,4,5,6}));
+  for (std::size_t i = 0; i < 6; ++i) {
+    EXPECT_NEAR(plan->target_radians[i],
+      cfg.target_degrees[i] * 3.14159265358979323846 / 180.0, 1e-12);
+  }
 }
 }  // namespace

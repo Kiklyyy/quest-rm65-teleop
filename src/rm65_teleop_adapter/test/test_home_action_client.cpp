@@ -1,4 +1,6 @@
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <thread>
@@ -66,7 +68,7 @@ protected:
   HomeTrajectoryPlan plan() const
   {
     return {{"joint1","joint2","joint3","joint4","joint5","joint6"},
-            {1,2,3,4,5,6}, 2.5};
+            {0,1,2,3,4,5}, {1,2,3,4,5,6}, 2.5};
   }
   bool reject_{false};
   int cancel_count_{0};
@@ -88,11 +90,27 @@ TEST_F(HomeActionClientTest, ServerAvailableGoalPayloadAndSecondGoalBlocked)
   const auto goal = handle_->get_goal();
   EXPECT_EQ(goal->trajectory.joint_names,
     (std::vector<std::string>{"joint1","joint2","joint3","joint4","joint5","joint6"}));
-  ASSERT_EQ(goal->trajectory.points.size(), 1u);
-  EXPECT_EQ(goal->trajectory.points[0].positions,
+  ASSERT_EQ(goal->trajectory.points.size(), 4u);
+  const std::array<double, 4> blends{{0.0, 7.0 / 27.0, 20.0 / 27.0, 1.0}};
+  for (std::size_t p = 0; p < 4; ++p) {
+    const auto & point = goal->trajectory.points[p];
+    ASSERT_EQ(point.positions.size(), 6u);
+    ASSERT_EQ(point.velocities.size(), 6u);
+    ASSERT_EQ(point.accelerations.size(), 6u);
+    for (std::size_t j = 0; j < 6; ++j) {
+      EXPECT_NEAR(point.positions[j], static_cast<double>(j) + blends[p], 1e-12);
+      EXPECT_TRUE(std::isfinite(point.velocities[j]));
+      EXPECT_TRUE(std::isfinite(point.accelerations[j]));
+    }
+  }
+  EXPECT_DOUBLE_EQ(goal->trajectory.points.front().velocities.front(), 0.0);
+  EXPECT_DOUBLE_EQ(goal->trajectory.points.back().velocities.front(), 0.0);
+  EXPECT_EQ(goal->trajectory.points.front().time_from_start.sec, 0);
+  EXPECT_EQ(goal->trajectory.points.front().time_from_start.nanosec, 0u);
+  EXPECT_EQ(goal->trajectory.points.back().positions,
     (std::vector<double>{1,2,3,4,5,6}));
-  EXPECT_EQ(goal->trajectory.points[0].time_from_start.sec, 2);
-  EXPECT_EQ(goal->trajectory.points[0].time_from_start.nanosec, 500000000u);
+  EXPECT_EQ(goal->trajectory.points.back().time_from_start.sec, 2);
+  EXPECT_EQ(goal->trajectory.points.back().time_from_start.nanosec, 500000000u);
   handle_->succeed(std::make_shared<FollowJT::Result>());
   ASSERT_TRUE(wait_until([this] {return !events_.empty();}));
   EXPECT_EQ(events_.back(), HomeActionEvent::SUCCEEDED);

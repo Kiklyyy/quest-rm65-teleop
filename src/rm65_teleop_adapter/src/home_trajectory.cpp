@@ -10,6 +10,9 @@ namespace rm65_teleop_adapter
 namespace
 {
 constexpr double kRadiansPerDegree = 3.14159265358979323846 / 180.0;
+// rm_control clamps the spline's endpoint velocities to zero. Smoothstep's
+// peak derivative is 1.5 times its average, so reserve that time up front.
+constexpr double kSmoothstepPeakSlope = 1.5;
 }
 
 bool home_trajectory_config_valid(const HomeTrajectoryConfig & config)
@@ -54,12 +57,13 @@ std::optional<HomeTrajectoryPlan> make_home_trajectory_plan(
   double farthest_delta = 0.0;
   for (std::size_t i = 0; i < 6; ++i) {
     if (!std::isfinite(current_radians[i])) return std::nullopt;
+    plan.current_radians[i] = current_radians[i];
     plan.target_radians[i] = config.target_degrees[i] * kRadiansPerDegree;
     farthest_delta = std::max(farthest_delta,
       std::abs(plan.target_radians[i] - current_radians[i]));
   }
   plan.duration_seconds = std::max(
-    farthest_delta / (config.speed_deg_s * kRadiansPerDegree), 0.1);
+    kSmoothstepPeakSlope * farthest_delta / (config.speed_deg_s * kRadiansPerDegree), 0.1);
   if (!std::isfinite(plan.duration_seconds)) return std::nullopt;
   return plan;
 }
