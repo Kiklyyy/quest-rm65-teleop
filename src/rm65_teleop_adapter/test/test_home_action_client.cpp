@@ -130,6 +130,22 @@ TEST_F(HomeActionClientTest, CancelWaitsForCanceledTerminal)
   EXPECT_EQ(events_.back(), HomeActionEvent::CANCELED);
 }
 
+TEST_F(HomeActionClientTest, CancelRequestedVendorSuccessReportsCanceled)
+{
+  ASSERT_TRUE(client_->send_goal(plan()));
+  ASSERT_TRUE(wait_until([this] {return static_cast<bool>(handle_);}));
+  ASSERT_TRUE(client_->request_cancel());
+  ASSERT_TRUE(wait_until([this] {return cancel_count_ == 1;}));
+  EXPECT_TRUE(client_->goal_active());
+  EXPECT_TRUE(events_.empty());
+  auto result = std::make_shared<FollowJT::Result>();
+  result->error_code = FollowJT::Result::SUCCESSFUL;
+  handle_->succeed(result);
+  ASSERT_TRUE(wait_until([this] {return !events_.empty();}));
+  EXPECT_EQ(events_.back(), HomeActionEvent::CANCELED);
+  EXPECT_FALSE(client_->goal_active());
+}
+
 TEST_F(HomeActionClientTest, RejectedGoalReportsRejected)
 {
   reject_ = true;

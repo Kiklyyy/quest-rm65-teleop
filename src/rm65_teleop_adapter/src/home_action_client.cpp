@@ -70,12 +70,14 @@ bool HomeActionClient::send_goal(const HomeTrajectoryPlan & plan)
       if (cancel_requested_) client_->async_cancel_goal(handle_);
     };
   options.result_callback = [this](const GoalHandle::WrappedResult & result) {
+      const bool cancellation_was_requested = cancel_requested_;
       in_flight_ = false;
       cancel_requested_ = false;
       handle_.reset();
       if (result.code == rclcpp_action::ResultCode::SUCCEEDED && result.result &&
           result.result->error_code == FollowJT::Result::SUCCESSFUL) {
-        callback_(HomeActionEvent::SUCCEEDED);
+        callback_(cancellation_was_requested ? HomeActionEvent::CANCELED :
+          HomeActionEvent::SUCCEEDED);
       } else if (result.code == rclcpp_action::ResultCode::CANCELED) {
         callback_(HomeActionEvent::CANCELED);
       } else {
