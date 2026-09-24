@@ -87,4 +87,5 @@ RED -> GREEN fixes during Task 7 addressed: a post-Home B/Grip rearm race; missi
 | joint6 | -139.886 | 97.570 | 237.456 | 237.456 |
 
 - Maximum raw joint delta: **237.456 deg on joint6**. Nominal synchronized duration at 15 deg/s: **15.830 s**. Joint1 and joint3 each require about 164 deg. This is a large, unvalidated first real Home movement; the current Home planner uses these raw joint targets, not a wrapped or shortened joint6 alternative. Joint limits, workspace clearance, and the proposed first short-motion/cancel envelope still require onsite review. **Next gate: NO-GO for a first Home goal on this evidence alone.**
+- A later read-only status sample still showed `ARMED`, both command paths ready, and `home_action_state=IDLE`, but `rearm_count=11` and `watchdog_count=11` since the adapter restart. The sampled inputs were fresh at that instant. No Home or Grip activation was initiated by this task. The counters are consistent with recurring input-freshness interruptions and require investigation before a motion test.
 - No Home goal was sent. No real Home motion was performed. real RM65 Home validation remains pending.
