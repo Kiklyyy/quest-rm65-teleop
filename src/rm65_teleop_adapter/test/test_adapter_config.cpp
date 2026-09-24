@@ -141,7 +141,7 @@ HomeParameterSet valid_home_parameters()
   p.enabled = true;
   p.button_field = "upper";
   p.action_name = "/right/rm_group_controller/follow_joint_trajectory";
-  p.joint_degrees = {-95.605, 4.406, -80.034, -22.695, -48.462, 97.570};
+  p.joint_degrees = {68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062};
   p.joint_names = {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6"};
   p.speed_deg_s = 15.0;
   p.hold_seconds = 1.5;

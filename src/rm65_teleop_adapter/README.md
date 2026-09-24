@@ -201,8 +201,8 @@ Physical A maps to `button_lower` and remains reserved. Physical B maps to
 `press_middle` remains the teleop deadman with 0.60/0.40 hysteresis. Releasing
 and repressing Grip remains the actual Quest/RM re-anchor gesture.
 
-The temporary six-joint target is configured in `hardware.yaml` in degrees:
-`[-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]`, ordered by
+The operator-confirmed 2026-09-24 right-arm Home target is configured in `hardware.yaml` in degrees:
+`[68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]`, ordered by
 `joint1` through `joint6`. The adapter reorders incoming JointState positions
 by name and rejects missing, duplicate, non-finite, or mismatched samples.
 The one-point trajectory duration is the farthest joint angular distance
@@ -248,7 +248,7 @@ export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 /usr/bin/colcon test-result --test-result-base build --all --verbose
 ```
 
-Observed complete result: 203 tests, 0 errors, 0 failures, 0 skipped.
+Observed complete result after the 2026-09-24 Home target update: 206 tests, 0 errors, 0 failures, 0 skipped.
 
 ## Run dry-run
 

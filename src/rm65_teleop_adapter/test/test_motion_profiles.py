@@ -142,7 +142,7 @@ def test_home_is_hardware_only_and_uses_confirmed_configuration():
     assert hardware["home_button_field"] == "upper"
     assert hardware["home_hold_seconds"] == 1.5
     assert hardware["home_speed_deg_s"] == 15.0
-    assert hardware["home_joint_degrees"] == [-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]
+    assert hardware["home_joint_degrees"] == [68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]
     assert hardware["home_joint_names"] == [f"joint{i}" for i in range(1, 7)]
     assert hardware["home_action_name"] == "/right/rm_group_controller/follow_joint_trajectory"
     for profile in ("safe", "normal", "fast"):

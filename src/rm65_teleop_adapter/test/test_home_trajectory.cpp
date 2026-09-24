@@ -8,7 +8,7 @@ namespace
 using namespace rm65_teleop_adapter;
 HomeTrajectoryConfig valid_config()
 {
-  return {{-95.605, 4.406, -80.034, -22.695, -48.462, 97.570},
+  return {{68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062},
           {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6"}, 15.0, 1.5};
 }
 

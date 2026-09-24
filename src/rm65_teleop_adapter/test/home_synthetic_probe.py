@@ -209,7 +209,7 @@ def test_home_synthetic_probe():
                     assert first_goal.trajectory.joint_names == [f"joint{i}" for i in range(1, 7)]
                     assert len(first_goal.trajectory.points) == 1
                     actual_positions = first_goal.trajectory.points[0].positions
-                    expected_degrees = [-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]
+                    expected_degrees = [68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]
                     current_radians = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
                     assert all(math.isfinite(x) for x in actual_positions)
                     for actual, degrees in zip(actual_positions, expected_degrees):

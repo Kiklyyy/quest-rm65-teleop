@@ -14,7 +14,7 @@
 - Source: operator-confirmed Quest2ROS2 mapping; A was the former pre-trigger deadman button. No new A/B probe was performed.
 - Grip `press_middle` remains the teleop deadman (`>=0.60` pressed, `<=0.40` released). Released -> Grip pressed still captures fresh Quest and RM anchors.
 - Configured Home joint names: `joint1`, `joint2`, `joint3`, `joint4`, `joint5`, `joint6`. Incoming JointState positions are reordered by these names, with missing/duplicate/non-finite/mismatched samples rejected.
-- Temporary Home target in degrees: `[-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]`. Hold: `1.5 s`. Nominal speed: `15 deg/s`. Duration is the farthest joint angular distance divided by speed, with a minimum that only slows the move.
+- Operator-confirmed 2026-09-24 Home target in degrees: `[68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]`. The old temporary target `[-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]` is retired. Hold: `1.5 s`. Nominal speed: `15 deg/s`. Duration is the farthest joint angular distance divided by speed, with a minimum that only slows the move.
 - Hardware action: `/right/rm_group_controller/follow_joint_trajectory` (`control_msgs/action/FollowJointTrajectory`). Hardware Home is enabled in `hardware.yaml`; dry-run Home is disabled and creates no real Home action client.
 
 ## State and safety behavior
@@ -89,3 +89,34 @@ RED -> GREEN fixes during Task 7 addressed: a post-Home B/Grip rearm race; missi
 - Maximum raw joint delta: **237.456 deg on joint6**. Nominal synchronized duration at 15 deg/s: **15.830 s**. Joint1 and joint3 each require about 164 deg. This is a large, unvalidated first real Home movement; the current Home planner uses these raw joint targets, not a wrapped or shortened joint6 alternative. Joint limits, workspace clearance, and the proposed first short-motion/cancel envelope still require onsite review. **Next gate: NO-GO for a first Home goal on this evidence alone.**
 - A later read-only status sample still showed `ARMED`, both command paths ready, and `home_action_state=IDLE`, but `rearm_count=11` and `watchdog_count=11` since the adapter restart. The sampled inputs were fresh at that instant. No Home or Grip activation was initiated by this task. The counters are consistent with recurring input-freshness interruptions and require investigation before a motion test.
 - No Home goal was sent. No real Home motion was performed. real RM65 Home validation remains pending.
+
+
+## 2026-09-24 operator-confirmed current posture as new Home
+
+- The initial fresh read-only samples were stable but differed materially from the previous preflight display `[68.324, -6.424, 84.067, 40.032, 36.801, -139.886]` deg. Work stopped before editing until the onsite operator explicitly confirmed that the **newer current right-arm posture** was the intended default Home. A further fresh `/right/joint_states` frame at stamp `1790247560.584515341` remained consistent with those samples. Its six names were unique and matched `joint1` through `joint6`; every position was finite. Positions were matched by name and converted from radians to degrees, rather than assuming array order or copying the three-decimal report.
+
+| Joint | Fresh rad | New Home deg | Difference from previous displayed preflight deg |
+|---|---:|---:|---:|
+| joint1 | 1.1924806148529052 | 68.3241063822369 | +0.000106382 |
+| joint2 | -0.1481679530620575 | -8.489398369548377 | -2.065398370 |
+| joint3 | 1.0496872882843018 | 60.14265142722264 | -23.924348573 |
+| joint4 | 0.550128683757782 | 31.52005176840807 | -8.511948232 |
+| joint5 | 0.9011878175735474 | 51.634258495569824 | +14.833258496 |
+| joint6 | -2.5150337043762208 | -144.10081659391062 | -4.214816594 |
+
+- `docs/INTERFACE.md` was updated before the implementation configuration. Only `home_joint_degrees` changed in `hardware.yaml`; joint names, hold time, speed, action, deadman, B binding, motion profiles, mapping, watchdogs, and workspace were kept. README and hard-coded test expectations were synchronized. The target remains a startup configuration parameter, not C++ code.
+- The four-package worktree build and complete isolated regression used system Python and `/usr/bin/colcon` with Conda variables removed, `ROS_DOMAIN_ID=143`, `ROS_LOCALHOST_ONLY=1`, and `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`. Result: **206 tests, 0 errors, 0 failures, 0 skipped**. The suite includes joint-name reorder, degree-to-radian conversion, trajectory duration, B hold, cancel acknowledgment, `REARM_REQUIRED`, dry-run isolation, command-path ownership, and XYZ/orientation regressions.
+- Before restart, read-only Inputs showed Grip `press_middle=0.0`, B `button_upper=false`, and A `button_lower=false`; status was `ARMED`, `home_action_state=IDLE`, and both command paths ready. The original launch did not exit on SIGINT; targeted SIGTERM stopped its launch/adapter, but three launch children remained orphaned. A first replacement launch could not bind Quest TCP port 10000 while the old endpoint remained, and reported `DISABLED` with missing Quest inputs. Those exact old child processes and the first replacement launch/children were stopped with targeted SIGTERM. The final launch from this worktree bound port 10000, Quest reconnected, and exactly one new adapter/TCP endpoint/target bridge/status monitor was observed. Right RM driver and right-only `rm_control` were not restarted; `/home/lh/robot` was not edited.
+- After final restart, the adapter returned the configured Home parameter exactly. Read-only Inputs again showed Grip and B released. Sampled status: `state=ARMED`, `home_action_state=IDLE`, `command_path_ready=true`, `home_command_path_ready=true`, with fresh Quest/input/robot/joint data. The final direct JointState stamp was `1790248113.052258613`.
+
+| Joint | Post-restart current deg | New Home deg | Home - current deg | Abs delta deg |
+|---|---:|---:|---:|---:|
+| joint1 | 68.327104169 | 68.324106382 | -0.002997786 | 0.002997786 |
+| joint2 | -8.485399414 | -8.489398370 | -0.003998956 | 0.003998956 |
+| joint3 | 60.140652903 | 60.142651427 | +0.001998524 | 0.001998524 |
+| joint4 | 31.520051768 | 31.520051768 | 0.000000000 | 0.000000000 |
+| joint5 | 51.642256407 | 51.634258496 | -0.007997911 | 0.007997911 |
+| joint6 | -144.100816594 | -144.100816594 | 0.000000000 | 0.000000000 |
+
+- Maximum absolute delta: **0.007997911 deg**. The current 15 deg/s formula with its 0.1 s minimum gives a **0.1 s nominal trajectory duration** from this sample; no trajectory was requested. A sampled `rearm_count=5`, `watchdog_count=5` after restart shows intermittent input freshness interruptions are still occurring and should be investigated before any real Home test.
+- **Home goals sent: 0. Home motion performed: none.** New Home target configured; real Home motion/cancel validation still pending. The next gate is onsite review of input/watchdog stability and a separately authorized, controlled real Home motion/cancel test from a verified non-Home pose.
