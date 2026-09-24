@@ -120,3 +120,30 @@ RED -> GREEN fixes during Task 7 addressed: a post-Home B/Grip rearm race; missi
 
 - Maximum absolute delta: **0.007997911 deg**. The current 15 deg/s formula with its 0.1 s minimum gives a **0.1 s nominal trajectory duration** from this sample; no trajectory was requested. A sampled `rearm_count=5`, `watchdog_count=5` after restart shows intermittent input freshness interruptions are still occurring and should be investigated before any real Home test.
 - **Home goals sent: 0. Home motion performed: none.** New Home target configured; real Home motion/cancel validation still pending. The next gate is onsite review of input/watchdog stability and a separately authorized, controlled real Home motion/cancel test from a verified non-Home pose.
+
+
+## 2026-09-24 read-only Home idle stability validation (STABILITY NO-GO)
+
+- Branch and remote both started at `c94b499502626436bf770d1b4bb51fbeea945c07`; worktree was clean. No launch, TCP endpoint, adapter, RM driver, or `rm_control` was restarted. The live graph initially had one `/right/rm_driver`, one `/right/rm_control`, and one `/rm65_teleop_adapter`; the Action had one adapter client and one controller server. `movep` was adapter -> driver, `movej` was controller -> driver, and stop was adapter -> driver + controller, with no extra command endpoint. The same ownership/counts were observed after the timing run. Across 1,294 sampled adapter statuses, both command-path readiness flags stayed true.
+- Before observation, direct `/q2r_right_hand_inputs` showed `press_middle=0.0`, `button_upper=false`, `button_lower=false`. A separate pair of pre-run statuses showed `ARMED`, fresh inputs/feedback and `watchdog_count=78`; no restart occurred between that check and the timed run. The first status in the timed run was at `2026-09-24 19:21:53.033 +08:00`: `ARMED`, `rearm_count=120`, `watchdog_count=120`, all five freshness flags true. The timed read-only subscriber ran from `19:21:50.560` to `19:24:05.580 +08:00`, **135.003 s** total; first-to-last status coverage was **132.452 s**. The last status was `ARMED`, `rearm_count=123`, `watchdog_count=123`, all freshness flags true. The increase from 78 before the run to 120 at its baseline is further evidence of intermittent events outside startup, but the three events below are the counted events within the timed window.
+- The subscriber only received the five input/feedback topics and adapter status. It created no publishers. All 9,509 direct Inputs samples kept Grip, B, and A released. Maximum observed per-joint feedback range was 0.011 deg, consistent with a stationary arm at this scale.
+
+| Topic | Approx. receive rate | Maximum receive gap | Threshold | Crossings |
+|---|---:|---:|---:|---:|
+| `/q2r_right_hand_pose` | 72.028 Hz | 342.907 ms | 200 ms | 3 |
+| `/q2r_right_hand_inputs` | 72.027 Hz | 342.989 ms | 200 ms | 3 |
+| `/quest_right_target_pose` | 50.044 Hz | 36.314 ms | 200 ms target timeout | 0 |
+| `/right/rm_driver/udp_arm_position` | 197.588 Hz | 22.664 ms | 100 ms | 0 |
+| `/right/joint_states` | 197.589 Hz | 22.698 ms | 100 ms | 0 |
+
+- The adapter reported `ARMED` for 1,288 status samples and `REARM_REQUIRED` for six samples. All six `REARM_REQUIRED` samples had `reason=input_not_fresh` and both `quest_pose_fresh=false` and `inputs_fresh=false`; `target_fresh`, `robot_fresh`, and `joint_state_fresh` stayed true in every status sample. Maximum reported ages were Quest Pose 309.784 ms, Inputs 309.773 ms, robot 16.354 ms, and joints 16.414 ms. The direct target continued at about 50 Hz with a 36.314 ms maximum gap, so target publication alone did not establish live Quest input.
+
+| Watchdog event (+1 each) | Previous -> new state | Reason | Pose / Inputs age at event | Direct Pose / Inputs gap on recovery | Robot / Joint age at event |
+|---|---|---|---|---|---|
+| 19:22:49.949 +08:00 | `ARMED` -> `REARM_REQUIRED` | `input_not_fresh` | 202.071 / 201.615 ms | 342.907 / 342.989 ms | 1.436 / 1.393 ms |
+| 19:22:52.004 +08:00 | `ARMED` -> `REARM_REQUIRED` | `input_not_fresh` | 204.795 / 204.387 ms | 310.859 / 311.149 ms | 1.473 / 1.550 ms |
+| 19:22:52.949 +08:00 | `ARMED` -> `REARM_REQUIRED` | `input_not_fresh` | 204.818 / 204.807 ms | 320.191 / 320.276 ms | 1.188 / 1.269 ms |
+
+- Quest Pose and Inputs became stale together to within roughly 0.5 ms; there was no isolated Inputs-only dropout. The direct recovery gaps and the adapter's independent age/freshness measurements agree, while robot feedback and target publication continued. The read-only TCP log showed no connection/error/reconnect entry inside the 135 s window. A post-run socket snapshot showed established TCP connections from `192.168.5.45` to port 10000, owned by the single endpoint process; it showed two established sockets from that same peer, but this alone does not explain the paired data gaps or prove the Quest sender stayed continuously healthy. Further Quest/TCP receive-side timing evidence is needed to locate the stall within the shared input path.
+- A later read-only status sample after the timed subscriber exited, without a restart, showed `ARMED`, `rearm_count=129`, and `watchdog_count=129`. These six additional increments were outside the instrumented 135 s window; their individual stale sources were not captured by that run.
+- **Decision: STABILITY NO-GO.** These watchdogs recurred about 59-62 s into an already-running idle observation; they were not confined to launch/TCP reconnect startup. Existing `target_timeout=200 ms`, `quest_pose_timeout=200 ms`, `inputs_timeout=200 ms`, `robot_timeout=100 ms`, and `joint_state_timeout=100 ms` were not modified. No Home goal, `FollowJointTrajectory`, Cartesian motion, `movep`, `movej`, manual stop experiment, robot motion, or restart was initiated. Real Home motion/cancel validation remains pending. Next gate: instrument/read the Quest -> TCP endpoint delivery path, including the two observed connections and packet receive gaps, then repeat at least 120 s idle stability under the same limits before considering a separately authorized first real Home test.
