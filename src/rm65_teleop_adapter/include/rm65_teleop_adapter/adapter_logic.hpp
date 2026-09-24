@@ -60,6 +60,7 @@ struct CycleInput
   bool robot_fresh{false};
   bool control_period_valid{true};
   bool command_path_ready{true};
+  bool home_command_path_ready{true};
   double dt_seconds{0.0};
 };
 

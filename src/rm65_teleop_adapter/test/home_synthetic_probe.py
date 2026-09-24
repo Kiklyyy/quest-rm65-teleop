@@ -19,7 +19,7 @@ from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from rm_ros_interfaces.msg import Cartepos
+from rm_ros_interfaces.msg import Cartepos, Jointpos
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Empty, String
 
@@ -31,7 +31,7 @@ PREFIX = "/test/home"
 
 class SyntheticHome(Node):
     def __init__(self):
-        super().__init__("synthetic_home_probe")
+        super().__init__("rm_driver", namespace="/right")
         self.button = False
         self.grip = 0.0
         self.publish_quest = True
@@ -52,17 +52,12 @@ class SyntheticHome(Node):
         self.joints = self.create_publisher(JointState, PREFIX + "/joints", 10)
         self.command_sub = self.create_subscription(
             Cartepos, PREFIX + "/movep_cmd", self._command, 10)
+        self.movej_sub = self.create_subscription(
+            Jointpos, PREFIX + "/movej_cmd", lambda _: None, 10)
         self.stop_sub = self.create_subscription(
             Empty, PREFIX + "/stop", self._stop, 10)
         self.status_sub = self.create_subscription(
             String, "/right/rm65_teleop/status", self._status, 10)
-        self.action = ActionServer(
-            self, FollowJointTrajectory, PREFIX + "/action",
-            execute_callback=self._execute,
-            goal_callback=self._goal,
-            cancel_callback=self._cancel,
-            callback_group=ReentrantCallbackGroup(),
-        )
         self.timer = self.create_timer(0.02, self._publish)
 
     def _command(self, _):
@@ -149,8 +144,19 @@ def test_home_synthetic_probe():
     assert EXECUTABLE.exists()
     rclpy.init()
     node = SyntheticHome()
+    controller = Node("rm_control", namespace="/right")
+    controller.create_publisher(Jointpos, PREFIX + "/movej_cmd", 10)
+    controller.create_subscription(Empty, PREFIX + "/stop", lambda _: None, 10)
+    node.action = ActionServer(
+        controller, FollowJointTrajectory, PREFIX + "/action",
+        execute_callback=node._execute,
+        goal_callback=node._goal,
+        cancel_callback=node._cancel,
+        callback_group=ReentrantCallbackGroup(),
+    )
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
+    executor.add_node(controller)
     thread = threading.Thread(target=executor.spin, daemon=True)
     thread.start()
     try:
@@ -164,6 +170,7 @@ def test_home_synthetic_probe():
                 "robot_pose_topic": PREFIX + "/robot_pose",
                 "joint_state_topic": PREFIX + "/joints",
                 "command_topic": PREFIX + "/movep_cmd",
+                "home_movej_topic": PREFIX + "/movej_cmd",
                 "stop_topic": PREFIX + "/stop",
                 "home_action_name": PREFIX + "/action",
             }}}
@@ -175,6 +182,10 @@ def test_home_synthetic_probe():
                 process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
                 try:
                     wait_for(lambda: node.latest_state() == "ARMED", "initial ARMED", 8)
+                    wait_for(lambda: node.statuses[-1][1].get("command_path_ready"),
+                             "Home topology command path", 5)
+                    wait_for(lambda: node.statuses[-1][1].get("home_command_path_ready"),
+                             "Home joint and stop path", 5)
                     initial_status = node.statuses[-1][1]
                     for field in ("quest_pose_age_ms", "inputs_age_ms", "robot_age_ms"):
                         assert isinstance(initial_status[field], (int, float))
@@ -187,7 +198,6 @@ def test_home_synthetic_probe():
                     assert initial_status["watchdog_count"] == 0
                     assert initial_status["home_action_state"] in ("IDLE", "SERVER_UNAVAILABLE")
                     assert node.count_publishers("/right/rm_driver/movep_canfd_cmd") == 0
-                    assert not any("rm_driver" in name for name, _ in node.get_node_names_and_namespaces())
 
                     # A short B hold cannot create a goal.
                     node.button = True
@@ -316,6 +326,10 @@ def test_home_synthetic_probe():
                             dry_process.wait(timeout=5)
                     print("synthetic Home: 5 goals, 4 cancels, 1 success, 0 Cartesian commands, 0 real publishers; dry-run has no Home client")
                 except Exception:
+                    print("LAST STATUS", node.statuses[-1] if node.statuses else None)
+                    for topic in (PREFIX + "/movej_cmd", PREFIX + "/action/_action/status"):
+                        print("GRAPH", topic, [(x.node_name, x.node_namespace, x.topic_type)
+                                               for x in node.get_publishers_info_by_topic(topic)])
                     print(log_path.read_text(encoding="utf-8"))
                     raise
                 finally:
@@ -331,6 +345,120 @@ def test_home_synthetic_probe():
         executor.shutdown(timeout_sec=5)
         thread.join(timeout=5)
         node.action.destroy()
+        controller.destroy_node()
         node.destroy_node()
         rclpy.shutdown()
         assert process.poll() is not None
+
+
+def test_command_path_ownership_probe():
+    """A fake right driver/controller graph exercises endpoint ownership without goals."""
+    assert os.environ.get("ROS_DOMAIN_ID") == "143"
+    assert os.environ.get("ROS_LOCALHOST_ONLY") == "1"
+    rclpy.init()
+    driver = SyntheticHome()
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(driver)
+    thread = threading.Thread(target=executor.spin, daemon=True)
+    thread.start()
+    controller = None
+    action = None
+    unknown = None
+    duplicate = None
+    process = None
+    try:
+        with tempfile.TemporaryDirectory(prefix="home_graph_") as temp:
+            override_path = Path(temp) / "override.yaml"
+            log_path = Path(temp) / "adapter.log"
+            override_path.write_text(yaml.safe_dump({"rm65_teleop_adapter": {
+                "ros__parameters": {
+                    "target_topic": PREFIX + "/target",
+                    "quest_pose_topic": PREFIX + "/quest_pose",
+                    "inputs_topic": PREFIX + "/inputs",
+                    "robot_pose_topic": PREFIX + "/robot_pose",
+                    "joint_state_topic": PREFIX + "/joints",
+                    "command_topic": PREFIX + "/movep_cmd",
+                    "home_movej_topic": PREFIX + "/movej_cmd",
+                    "stop_topic": PREFIX + "/stop",
+                    "home_action_name": PREFIX + "/action",
+                }}}), encoding="utf-8")
+            with log_path.open("w", encoding="utf-8") as log:
+                process = subprocess.Popen(
+                    [str(EXECUTABLE), "--ros-args", "--params-file",
+                     str(PACKAGE / "config" / "hardware.yaml"),
+                     "--params-file", str(override_path)],
+                    stdout=log, stderr=subprocess.STDOUT)
+
+                def paths():
+                    if not driver.statuses:
+                        return None
+                    status = driver.statuses[-1][1]
+                    return (status.get("command_path_ready"),
+                            status.get("home_command_path_ready"))
+
+                try:
+                    wait_for(lambda: driver.latest_state() == "ARMED", "graph ARMED", 8)
+                    wait_for(lambda: paths() == (True, False),
+                             "driver-only Cartesian path")
+
+                    controller = Node("rm_control", namespace="/right")
+                    controller.create_publisher(Jointpos, PREFIX + "/movej_cmd", 10)
+                    controller.create_subscription(Empty, PREFIX + "/stop", lambda _: None, 10)
+                    action = ActionServer(
+                        controller, FollowJointTrajectory, PREFIX + "/action",
+                        execute_callback=driver._execute,
+                        goal_callback=driver._goal,
+                        cancel_callback=driver._cancel,
+                        callback_group=ReentrantCallbackGroup())
+                    executor.add_node(controller)
+                    wait_for(lambda: paths() == (True, True), "complete Home topology")
+
+                    unknown = Node("unknown_command_source")
+                    executor.add_node(unknown)
+                    extra_movep = unknown.create_publisher(Cartepos, PREFIX + "/movep_cmd", 10)
+                    wait_for(lambda: paths() == (False, False), "unknown movep publisher blocked")
+                    unknown.destroy_publisher(extra_movep)
+                    wait_for(lambda: paths() == (True, True), "movep path restored")
+
+                    extra_movej = unknown.create_publisher(Jointpos, PREFIX + "/movej_cmd", 10)
+                    wait_for(lambda: paths() == (True, False), "unknown movej publisher blocked")
+                    unknown.destroy_publisher(extra_movej)
+                    wait_for(lambda: paths() == (True, True), "movej path restored")
+
+                    extra_stop = unknown.create_subscription(
+                        Empty, PREFIX + "/stop", lambda _: None, 10)
+                    wait_for(lambda: paths() == (False, False), "unknown stop subscriber blocked")
+                    unknown.destroy_subscription(extra_stop)
+                    wait_for(lambda: paths() == (True, True), "stop path restored")
+
+                    duplicate = Node("rm_control", namespace="/right")
+                    executor.add_node(duplicate)
+                    wait_for(lambda: paths() == (False, False), "duplicate controller blocked")
+                    # The initial driver-only phase covered a missing controller.
+                    # Destroying duplicate same-name ROS nodes can leave endpoint
+                    # identities UNKNOWN until the isolated graph is torn down.
+                    assert driver.goals == []
+                    assert driver.command_count == 0
+                except Exception:
+                    print("LAST STATUS", driver.statuses[-1] if driver.statuses else None)
+                    for topic in (PREFIX + "/movej_cmd", PREFIX + "/action/_action/status"):
+                        print("GRAPH", topic, [(x.node_name, x.node_namespace, x.topic_type)
+                                               for x in driver.get_publishers_info_by_topic(topic)])
+                    print(log_path.read_text(encoding="utf-8"))
+                    raise
+    finally:
+        if process is not None and process.poll() is None:
+            process.send_signal(signal.SIGINT)
+            process.wait(timeout=5)
+        executor.shutdown(timeout_sec=5)
+        thread.join(timeout=5)
+        if action is not None:
+            action.destroy()
+        if duplicate is not None:
+            duplicate.destroy_node()
+        if controller is not None:
+            controller.destroy_node()
+        if unknown is not None:
+            unknown.destroy_node()
+        driver.destroy_node()
+        rclpy.shutdown()

@@ -805,6 +805,39 @@ TEST(AdapterLogic, HomeRequiresExclusiveCartesianAndStopPath)
   EXPECT_TRUE(out.stop_requested);
 }
 
+TEST(AdapterLogic, HomeJointPathBlocksHomeButPreservesCartesianTeleop)
+{
+  AdapterLogic logic;
+  auto input = home_ready_input();
+  input.home_button_pressed = false;
+  ASSERT_EQ(logic.update(input).state, AdapterState::ARMED);
+  input.home_command_path_ready = false;
+  input.home_button_pressed = true;
+  for (int i = 0; i < 4; ++i) {
+    const auto out = logic.update(input);
+    EXPECT_EQ(out.state, AdapterState::ARMED);
+    EXPECT_FALSE(out.home_goal_requested);
+  }
+  input.home_button_pressed = false;
+  input.enable = true;
+  const auto teleop = logic.update(input);
+  EXPECT_EQ(teleop.state, AdapterState::ACTIVE);
+  EXPECT_TRUE(teleop.command.has_value());
+}
+
+TEST(AdapterLogic, HomeJointPathLossRequestsCancelAndStop)
+{
+  AdapterLogic logic;
+  auto input = home_ready_input();
+  start_home(logic, input);
+  input.home_command_path_ready = false;
+  const auto out = logic.update(input);
+  EXPECT_EQ(out.state, AdapterState::HOMING);
+  EXPECT_TRUE(out.home_cancel_requested);
+  EXPECT_TRUE(out.stop_requested);
+  EXPECT_EQ(out.reason, "home_command_path_not_ready");
+}
+
 TEST(AdapterLogic, HomeControlPeriodGuardBlocksAndCancels)
 {
   AdapterLogic logic;

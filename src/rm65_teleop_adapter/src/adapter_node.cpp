@@ -10,12 +10,14 @@
 #include <cmath>
 #include <functional>
 #include <deque>
+#include <initializer_list>
 #include <optional>
 #include <iomanip>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "geometry_msgs/msg/pose.hpp"
@@ -74,6 +76,33 @@ bool finite_position(const geometry_msgs::msg::PoseStamped & pose)
   return std::isfinite(pose.pose.position.x) && std::isfinite(pose.pose.position.y) &&
          std::isfinite(pose.pose.position.z);
 }
+
+using Endpoint = std::pair<std::string, std::string>;
+const Endpoint kAdapter{"rm65_teleop_adapter", "/"};
+const Endpoint kDriver{"rm_driver", "/right"};
+const Endpoint kController{"rm_control", "/right"};
+
+bool exactly_these_endpoints(
+  const std::vector<rclcpp::TopicEndpointInfo> & actual,
+  std::initializer_list<Endpoint> expected, const std::string & type)
+{
+  if (actual.size() != expected.size()) return false;
+  std::vector<Endpoint> remaining(expected);
+  for (const auto & endpoint : actual) {
+    if (endpoint.topic_type() != type) return false;
+    const Endpoint identity{endpoint.node_name(), endpoint.node_namespace()};
+    const auto found = std::find(remaining.begin(), remaining.end(), identity);
+    if (found == remaining.end()) return false;
+    remaining.erase(found);
+  }
+  return remaining.empty();
+}
+
+struct CommandPaths
+{
+  bool cartesian{false};
+  bool home{false};
+};
 }  // namespace
 
 class AdapterNode : public rclcpp::Node
@@ -169,8 +198,13 @@ public:
       "robot_pose_topic", "/right/rm_driver/udp_arm_position");
     command_topic_ = declare_parameter<std::string>(
       "command_topic", "/right/rm_driver/movep_canfd_cmd");
+    home_movej_topic_ = declare_parameter<std::string>(
+      "home_movej_topic", "/right/rm_driver/movej_canfd_cmd");
     stop_topic_ = declare_parameter<std::string>(
       "stop_topic", "/right/rm_driver/move_stop_cmd");
+    if (home_config_ && home_movej_topic_.empty()) {
+      throw std::invalid_argument("Home requires a movej command topic");
+    }
 
     preview_publisher_ = create_publisher<geometry_msgs::msg::PoseStamped>(
       "/right/rm65_teleop/preview_target_pose", 10);
@@ -282,12 +316,41 @@ public:
   }
 
 private:
-  bool command_path_ready() const
+  CommandPaths command_paths() const
   {
-    if (!hardware_mode_) return true;
-    return command_publisher_->get_subscription_count() == 1 &&
-           stop_publisher_->get_subscription_count() == 1 &&
-           count_publishers(command_topic_) == 1;
+    if (!hardware_mode_) return {true, false};
+    const bool movep_owned = exactly_these_endpoints(
+      get_publishers_info_by_topic(command_topic_), {kAdapter},
+      "rm_ros_interfaces/msg/Cartepos") &&
+      exactly_these_endpoints(
+      get_subscriptions_info_by_topic(command_topic_), {kDriver},
+      "rm_ros_interfaces/msg/Cartepos");
+    const bool stop_owned = exactly_these_endpoints(
+      get_publishers_info_by_topic(stop_topic_), {kAdapter}, "std_msgs/msg/Empty");
+    const auto stop_subscribers = get_subscriptions_info_by_topic(stop_topic_);
+    const bool driver_only_stop = exactly_these_endpoints(
+      stop_subscribers, {kDriver}, "std_msgs/msg/Empty");
+    const bool home_stop = exactly_these_endpoints(
+      stop_subscribers, {kDriver, kController}, "std_msgs/msg/Empty");
+    const auto node_names = get_node_names();
+    const bool controller_unique =
+      std::count(node_names.begin(), node_names.end(), "/right/rm_control") == 1;
+    const bool cartesian = movep_owned && stop_owned &&
+      (driver_only_stop || (home_stop && controller_unique));
+    if (!home_config_ || !cartesian || !home_stop || !controller_unique) {
+      return {cartesian, false};
+    }
+    const bool movej_owned = exactly_these_endpoints(
+      get_publishers_info_by_topic(home_movej_topic_), {kController},
+      "rm_ros_interfaces/msg/Jointpos") &&
+      exactly_these_endpoints(
+      get_subscriptions_info_by_topic(home_movej_topic_), {kDriver},
+      "rm_ros_interfaces/msg/Jointpos");
+    const bool action_owned = exactly_these_endpoints(
+      get_publishers_info_by_topic(home_config_->action_name + "/_action/status"),
+      {kController}, "action_msgs/msg/GoalStatusArray") &&
+      home_client_ && home_client_->server_ready();
+    return {cartesian, movej_owned && action_owned};
   }
 
   void publish_stop()
@@ -319,7 +382,9 @@ private:
     input.robot_fresh = is_fresh(robot_received_, robot_time_, robot_timeout_);
     input.control_period_valid = !hardware_mode_ || dt <= max_control_period_;
     input.robot_orientation_valid = robot_orientation_valid_;
-    input.command_path_ready = command_path_ready();
+    const auto paths = command_paths();
+    input.command_path_ready = paths.cartesian;
+    input.home_command_path_ready = paths.home;
     input.home_button_pressed = home_button_pressed_;
     input.joint_state_fresh = home_enabled_ &&
       is_fresh(joint_state_received_, joint_state_time_, joint_state_timeout_);
@@ -437,6 +502,7 @@ private:
            << ",\"home_hold_progress\":" << output.home_hold_progress
            << ",\"home_action_state\":\"" << home_action_state << "\""
            << ",\"command_path_ready\":" << input.command_path_ready
+           << ",\"home_command_path_ready\":" << input.home_command_path_ready
            << ",\"max_cycle_period_ms\":" << max_cycle_period_seen_ * 1000.0
            << ",\"reason\":\"" << output.reason << "\"}";
     std_msgs::msg::String status;
@@ -465,7 +531,7 @@ private:
   bool robot_orientation_valid_{false};
   double target_timeout_{0.20}, quest_pose_timeout_{0.20}, inputs_timeout_{0.20};
   double robot_timeout_{0.10}, max_control_period_{0.010}, max_cycle_period_seen_{0.0};
-  std::string preview_frame_id_, command_topic_, stop_topic_;
+  std::string preview_frame_id_, command_topic_, home_movej_topic_, stop_topic_;
   geometry_msgs::msg::PoseStamped target_pose_;
   Pose3 robot_pose_;
   SteadyClock::time_point target_time_{}, quest_pose_time_{}, inputs_time_{}, robot_time_{};

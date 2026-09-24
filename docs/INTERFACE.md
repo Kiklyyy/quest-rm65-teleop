@@ -133,7 +133,11 @@ dry_run=true
 hardware_write_enabled=false
 ```
 
-硬件模式必须同时显式配置 `dry_run=false`、`hardware_write_enabled=true`、`mapping_verified=true`。任一安全门不满足时，adapter 拒绝启动或不创建真实运动命令发布路径。ACTIVE 还要求命令 topic 只有 adapter 一个 publisher，且 driver command/stop 各有且只有一个订阅端点。
+硬件模式必须同时显式配置 `dry_run=false`、`hardware_write_enabled=true`、`mapping_verified=true`。任一安全门不满足时，adapter 拒绝启动或不创建真实运动命令发布路径。
+
+硬件命令图按节点身份和端点类型检查，额外端点或重复端点均不通过。`command_path_ready` 表示 Cartesian 路径可用：`/rm65_teleop_adapter` 是唯一 `movep_canfd_cmd` 发布者，`/right/rm_driver` 是唯一订阅者；adapter 是唯一 `move_stop_cmd` 发布者。仅 driver 运行时，stop 订阅者只能是 driver；right-only `rm_control` 运行时，stop 订阅者必须恰为 driver 和 `/right/rm_control`。
+
+`home_command_path_ready` 还要求：`/right/rm_control` 是唯一 `movej_canfd_cmd` 发布者，driver 是唯一订阅者；Action status 只有该 controller 发布，FollowJointTrajectory server 可用，且图中恰有一个 `/right/rm_control` 节点。Home 启动和执行期间同时要求 Cartesian 与 Home 路径可用。`home_movej_topic` 参数默认为 `/right/rm_driver/movej_canfd_cmd`，仅用于检查命令所有权；adapter 自身不发布 movej。dry-run 不建立真实运动发布端点，也不创建真实 Home Action client。
 
 ## 坐标与锚定
 

@@ -161,7 +161,8 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
       else if (!input.target_fresh) cancel_reason = "home_target_not_fresh";
       else if (!pose_is_finite(input.target_pose) || !pose_is_finite(input.robot_pose))
         cancel_reason = "home_pose_invalid";
-      else if (!input.command_path_ready) cancel_reason = "home_command_path_not_ready";
+      else if (!input.command_path_ready || !input.home_command_path_ready)
+        cancel_reason = "home_command_path_not_ready";
       else if (!input.home_action_ready) cancel_reason = "home_action_not_ready";
       if (cancel_reason) {
         fault_reason_ = cancel_reason;
@@ -229,6 +230,7 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
         input.target_fresh && input.quest_pose_fresh && input.inputs_fresh &&
         input.robot_fresh && input.joint_state_fresh && input.joint_state_valid &&
         input.home_action_ready && input.home_plan_valid && input.command_path_ready &&
+        input.home_command_path_ready &&
         input.control_period_valid &&
         input.quest_orientation_valid && input.robot_orientation_valid &&
         pose_is_finite(input.target_pose) && pose_is_finite(input.robot_pose);
