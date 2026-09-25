@@ -327,16 +327,18 @@ Quest Pose/Inputs dropouts ended the initial dry-run preflight at NO-GO.
 
 ### Left first Cartesian movement gate (2026-09-25)
 
-The onsite operator has separately authorized one left-only Cartesian
+The onsite operator initially authorized one left-only Cartesian
 microtest: Quest left-hand physical left (`+Y`) to left RM base `+Z`
 (robot physical left), with about 50 mm requested robot TCP travel. This
 authorization accepts the known Quest input interruption risk for this one
 test; the existing 200 ms Pose/Inputs watchdogs and stop/rearm behavior are
-unchanged. It does not authorize other axes, wrist rotation, Home, face-button
-actions, or dual-arm operation.
+unchanged. That initial authorization did not cover other axes, wrist
+rotation, Home, face-button actions, or dual-arm operation. A later separate
+session authorized sequential XYZ translation testing with the test-only
+profile below; orientation, Home, gripper and dual-arm operation remain outside it.
 
 The left launch defaults to dry-run. Hardware mode requires an explicit
-session-specific config file with a fresh robot TCP anchor and a narrow
+session-specific config file with a fresh robot TCP anchor and an explicit
 absolute workspace; left hardware accepts only `motion_profile:=safe` or the
 explicit test-only `motion_profile:=left_test`. Left Home remains disabled, and no `rm_control` or Home
 Action client is present. The Cartesian command topic is
@@ -362,10 +364,10 @@ movement** because raw Quest input stopped for 236.648 s and the Ubuntu SSH
 observation link became unreliable. A subsequent fresh-P0 retest produced one
 real left Cartesian movement: Quest left-hand `+Y` drove left RM base `+Z`.
 The measured post-release TCP delta was `(+3.420, +0.515, +4.176) mm` in
-left-base `(X,Y,Z)`; peak `+Z` was `+5.562 mm`. Thus only the **+Z direction
-sign** has moving-hardware evidence. The operator's gesture also changed
+left-base `(X,Y,Z)`; peak `+Z` was `+5.562 mm`. At that checkpoint only the
+**+Z direction sign** had moving-hardware evidence. The operator's gesture also changed
 Quest Z and produced material left-base X motion, so pure single-axis tracking,
-the 50 mm target, the other axes and orientation remain unvalidated. The
+the 50 mm target, the other axes and orientation remained unvalidated. The
 temporary session config does not establish a reusable left hardware workspace.
 
 ### Left XYZ Cartesian test profile (test-only)
@@ -398,3 +400,15 @@ Grip release-to-press rearm rules. At 200 Hz nominal, the 0.15 mm step cap
 and 0.03 m/s velocity cap both correspond to at most 30 mm/s. This profile
 does not authorize intentional orientation motion, Home, gripper or dual-arm
 hardware use.
+
+The subsequent XYZ session used a fresh P0-centered ±70 mm cube after onsite
+confirmation. Test A produced Quest `+Y=56.216 mm`, preview base `+Z=56.049 mm`
+and stable robot base `+Z=56.074 mm`; ACTIVE Grip release requested stop. Test B
+produced Quest `+X=70.496 mm`, preview base `−Y=67.888 mm` and stable robot base
+`−Y=66.812 mm`, confirming the direction sign. The Quest gesture exceeded the
+70 mm radial anchor cap during B, so the adapter entered `FAULT` before Grip
+release. Test C (`Quest +Z → base −X`) was **not** performed. Both A and B had
+zero watchdog increments during ACTIVE. These observations validate A and B
+direction signs and A's sampled scale, but **do not complete XYZ moving-hardware
+validation** or establish a general workspace. See the left-arm progress log
+for the full three-axis deltas and physical stop residuals.
