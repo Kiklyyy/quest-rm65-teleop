@@ -11,13 +11,16 @@
 当前正式姿态参数恢复为 rotation_scale=1.0、90 deg/s、0.01 rad/cycle、90 deg
 单次 Grip anchor 上限。夹爪、左臂、双臂和完整安全验收仍未完成。
 
-## Left RM65 Quest teleop (software/dry-run only)
+## Left RM65 Quest teleop (dry-run with real feedback; no robot motion)
 
 - Branch `feat/left-rm65-teleop` depends on right Home closeout `074e0fa3b7b727fd39c4a2818a22114efe6ec1f3`; `origin/main` did not yet include that work at branch creation.
 - The right adapter executable/safety state machine now has explicit per-arm node identities, topics and preview/status/service endpoints. Right endpoint and Home configuration remain unchanged. A parameterized Quest target bridge and read-only monitor support a separate left dry-run launch.
-- Operator-confirmed left physical axes yield the mathematically proper matrix `[[0,0,-1],[-1,0,0],[0,1,0]]`; software tests cover XYZ and the existing world-frame orientation convention. **Left mapping hardware validation is pending.**
-- Left configuration is dry-run only: `hardware_write_enabled=false`, `mapping_verified=false`, `home_enabled=false`. Left Home target/button, left physical Grip and X/Y mapping, workspace, tool/load, cable limits, and mutual collision boundaries are not accepted. The large finite left preview bounds are synthetic placeholders, not hardware limits.
-- Isolated `ROS_DOMAIN_ID=143`, localhost-only left Quest/feedback probe produced target, status and preview, with zero real left movep/movej/stop publishers and no Home Action client. A left launch smoke started bridge, adapter and monitor and exited cleanly; with no feedback it remained `DISABLED`. No left driver/controller or real motion was started.
+- Operator-confirmed left physical axes yield the mathematically proper matrix `[[0,0,-1],[-1,0,0],[0,1,0]]`; software tests cover XYZ and the existing world-frame orientation convention. Real Quest plus real robot-anchor **dry-run preview** has now passed; validation with actual left-arm movement is pending.
+- Left configuration is dry-run only: `hardware_write_enabled=false`, `mapping_verified=false`, `home_enabled=false`. Left Home target/button, absolute workspace, payload/cable limits, and mutual collision boundaries are not accepted. The large finite left preview bounds are synthetic placeholders, not hardware limits. The operator reported a gripper attached and all directions clear; a single selected first-test direction and numerical displacement limit remain unsupplied.
+- Isolated `ROS_DOMAIN_ID=143`, localhost-only left Quest/feedback probe produced target, status and preview, with zero real left movep/movej/stop publishers and no Home Action client. That software phase did not start a driver or real motion.
+- On 2026-09-25, a single left RM driver supplied real six-joint and TCP feedback at about 198 Hz, and the onsite operator confirmed both arms remained stationary. The left adapter/TCP/bridge/monitor were started in `dry_run` on domain 42. Live graph checks before, during and after Quest gestures showed **zero publishers** on left movep, movej, and stop topics and zero Home Action clients. The first driver attempt revealed that global `__node:=rm_driver` also renames its internal UDP node; restarting only that driver without the node remap produced unique `/left/rm_driver` and `/left/udp_publish_node`. No left `rm_control`, Home goal, or robot motion was started.
+- Real Quest left physical fields were confirmed: Grip=`press_middle`, index=`press_index`, X=`button_lower`, Y=`button_upper`; X/Y remain unbound. With the headset worn, dry-run preview signs against the real left TCP anchor passed forward `Quest +X→left -Y`, left `Quest +Y→left +Z`, and up `Quest +Z→left -X`. A small wrist rotation produced 27.418° raw Quest and 27.435° preview rotation, with 0.088° error versus the mapped quaternion prediction. An earlier forward trial without wearing the headset was excluded as invalid physical-direction evidence. No q/-q flip occurred in the live rotation interval.
+- **First left micro-motion remains NO-GO:** Quest Pose/Inputs repeatedly went stale together; in 532 s of the connected gesture window `watchdog_count` rose 0→42, and the longer connected window contained raw receive gaps up to about 1.425 s against 200 ms timeouts. Robot feedback remained fresh near these events, while the target bridge kept publishing. Timeouts were not changed. Operator-approved numerical displacement and other site-specific safety facts are still missing. The left dry-run/TCP/driver were stopped after the preflight; the domain-42 graph and TCP port 10000 were clear.
 - Four-package build and final automated regression passed: `colcon test-result --all` reported 220 tests, 0 errors, 0 failures, 0 skipped (includes 14 CTest wrapper records). Quest/TCP simultaneous input gaps remain open.
 
 ## Right RM65 Home + stability branch (hardware validated; input stability open)
@@ -124,7 +127,7 @@ field-tested tuning value / pending workspace and stopping-margin review，不�
   stopping distance、长时间静止抖动和更长时间连续运行记录。
 - 更系统的组合 rotation 与 translation + rotation 定量验证。
 - 夹爪。
-- 左臂与双臂。
+- 左臂真实运动与双臂。
 - 全部真实断流场景和长期网络抖动。
 - 真机 deadman 停止余量的系统化验收。
 - 更完整的工作空间/碰撞约束。

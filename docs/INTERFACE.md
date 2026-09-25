@@ -267,7 +267,7 @@ driver 必须以 `/right` namespace 和右臂参数单独启动。启动 driver 
 - Complete automated result after new Home target: 206 tests, 0 errors, 0 failures, 0 skipped. Synthetic result: 5 test-action goals, 4 cancels, 1 success, 0 Cartesian hardware commands. Subsequent operator-confirmed real tests validated multiple four-point Home returns from away-from-Home postures (about 5–7 s), physical stop on mid-motion B release, and terminal `home_action_state=CANCELED`. The RealMan controller can report successful completion after a stop; `HomeActionClient` maps that terminal success to `CANCELED` only when a local cancel was already pending. The final sampled adapter state was `ARMED` with Grip and B released, both command paths ready, and no automatic transition to `ACTIVE`. Quest pose and inputs still have occasional simultaneous >200 ms gaps (previous maximum about 343 ms), causing watchdog/rearm; input stability remains open.
 
 
-## Shared RM65 adapter endpoint contract (left software phase)
+## Shared RM65 adapter endpoint contract (left dry-run phase)
 
 The same `rm65_teleop_adapter_node` executable and safety state machine serve
 one configured arm per process. The right launch retains its existing endpoints;
@@ -316,6 +316,10 @@ derived left mapping is `dx=-Quest_dz`, `dy=-Quest_dx`, `dz=Quest_dy`, with
 `M_left=[[0,0,-1],[-1,0,0],[0,1,0]]`, `M M^T=I`, and `det(M)=+1`.
 Orientation uses the existing world/base-frame convention:
 `DeltaR_Q=R_Q R_Q0^T`, `DeltaR_L=M_left DeltaR_Q M_left^T`, and
-`R_desired=DeltaR_L R_L0`. This mapping is **not left-hardware validated**.
-Left face-button mapping, Home button/pose, physical Grip acceptance, and
-workspace are pending; face buttons have no left motion behavior.
+`R_desired=DeltaR_L R_L0`. Real Quest plus real left robot-anchor dry-run
+preview passed the three XYZ signs and a small quaternion comparison on
+2026-09-25; actual left-arm movement is **not validated**. Physical left
+Grip maps to `press_middle`, index to `press_index`, X to `button_lower`,
+and Y to `button_upper`. X/Y have no left Home, gripper, or motion binding.
+Left Home button/pose and absolute workspace remain pending. Recurring
+Quest Pose/Inputs dropouts keep the first left hardware movement at NO-GO.
