@@ -334,7 +334,9 @@ Orientation uses the existing world/base-frame convention:
 preview passed the three XYZ signs and a small quaternion comparison on
 2026-09-25; moving-hardware evidence currently covers left +Z and -Y direction
 signs. Quest +Z to left -X and all orientation axes await moving-hardware
-validation. Physical left
+validation. The first `normal` hardware session again confirmed physical-left
+`+Z` motion, but later gestures were unlabeled and cannot complete XYZ or
+orientation acceptance. Physical left
 Grip maps to `press_middle`, index to `press_index`, X to `button_lower`,
 and Y to `button_upper`. X/Y have no left Home, gripper, or motion binding.
 Left Home button/pose remain pending. Recurring Quest Pose/Inputs dropouts remain
