@@ -22,6 +22,28 @@ Hardware mode (right Home execution and B-release cancel hardware validated):
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py mode:=hardware
 ```
 
+## Shared left/right executable and left dry-run
+
+The same adapter executable and safety state machine serve one configured arm
+per process. Explicit `expected_adapter_node`, `expected_driver_node`, and
+`expected_control_node` identities gate command graph ownership. Right YAML
+retains all existing right endpoints and hardware Home settings. The new
+`left_dry_run.yaml` uses `/left` inputs/status/preview and the operator-derived
+proper rotation mapping. It cannot write hardware or start Home.
+
+```bash
+export ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1
+ros2 launch rm65_teleop_adapter left_quest_teleop.launch.py \
+  mode:=dry_run use_rviz:=false start_tcp:=false
+```
+
+The left launch shares the parameterized Quest target bridge and read-only
+monitor. `start_tcp` defaults to `false` to avoid taking a port already owned
+by a live endpoint. Without fresh left robot feedback, the adapter remains
+`DISABLED`; isolated tests provide synthetic feedback only in domain 143.
+Left mapping, Grip hardware behavior, Home and workspace are not hardware
+validated. See `docs/progress/left-arm-teleop.md`.
+
 ## Motion profiles
 
 The unified launch accepts `motion_profile:=safe|normal|fast`. The default is

@@ -11,6 +11,15 @@
 当前正式姿态参数恢复为 rotation_scale=1.0、90 deg/s、0.01 rad/cycle、90 deg
 单次 Grip anchor 上限。夹爪、左臂、双臂和完整安全验收仍未完成。
 
+## Left RM65 Quest teleop (software/dry-run only)
+
+- Branch `feat/left-rm65-teleop` depends on right Home closeout `074e0fa3b7b727fd39c4a2818a22114efe6ec1f3`; `origin/main` did not yet include that work at branch creation.
+- The right adapter executable/safety state machine now has explicit per-arm node identities, topics and preview/status/service endpoints. Right endpoint and Home configuration remain unchanged. A parameterized Quest target bridge and read-only monitor support a separate left dry-run launch.
+- Operator-confirmed left physical axes yield the mathematically proper matrix `[[0,0,-1],[-1,0,0],[0,1,0]]`; software tests cover XYZ and the existing world-frame orientation convention. **Left mapping hardware validation is pending.**
+- Left configuration is dry-run only: `hardware_write_enabled=false`, `mapping_verified=false`, `home_enabled=false`. Left Home target/button, left physical Grip and X/Y mapping, workspace, tool/load, cable limits, and mutual collision boundaries are not accepted. The large finite left preview bounds are synthetic placeholders, not hardware limits.
+- Isolated `ROS_DOMAIN_ID=143`, localhost-only left Quest/feedback probe produced target, status and preview, with zero real left movep/movej/stop publishers and no Home Action client. A left launch smoke started bridge, adapter and monitor and exited cleanly; with no feedback it remained `DISABLED`. No left driver/controller or real motion was started.
+- Four-package build and final automated regression passed: `colcon test-result --all` reported 220 tests, 0 errors, 0 failures, 0 skipped (includes 14 CTest wrapper records). Quest/TCP simultaneous input gaps remain open.
+
 ## Right RM65 Home + stability branch (hardware validated; input stability open)
 
 - Branch `feat/recenter-home` locks physical A=`button_lower` (reserved) and B=`button_upper` (Home). Grip `press_middle` remains the 0.60/0.40 teleop deadman.
