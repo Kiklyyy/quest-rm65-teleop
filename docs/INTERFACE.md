@@ -356,8 +356,13 @@ test retains its existing orientation mapping and requires the operator to
 keep the wrist approximately fixed. Real hardware orientation response is
 outside this test's acceptance claim.
 
-The prepared first-motion session on 2026-09-25 stopped **before Grip or
-robot movement** because raw Quest input stopped for 236.648 s and the Ubuntu
-SSH observation link became unreliable. No left Cartesian direction has yet
-been validated on moving hardware. The temporary session config does not
-establish a reusable left hardware workspace.
+The first prepared session on 2026-09-25 stopped **before Grip or robot
+movement** because raw Quest input stopped for 236.648 s and the Ubuntu SSH
+observation link became unreliable. A subsequent fresh-P0 retest produced one
+real left Cartesian movement: Quest left-hand `+Y` drove left RM base `+Z`.
+The measured post-release TCP delta was `(+3.420, +0.515, +4.176) mm` in
+left-base `(X,Y,Z)`; peak `+Z` was `+5.562 mm`. Thus only the **+Z direction
+sign** has moving-hardware evidence. The operator's gesture also changed
+Quest Z and produced material left-base X motion, so pure single-axis tracking,
+the 50 mm target, the other axes and orientation remain unvalidated. The
+temporary session config does not establish a reusable left hardware workspace.
