@@ -1,4 +1,4 @@
-"""Left Quest preview or one bounded Cartesian hardware session."""
+"""Left Quest preview or explicitly enabled Cartesian hardware teleop."""
 
 import math
 from pathlib import Path
@@ -38,17 +38,24 @@ LEFT_HARDWARE_ENDPOINTS = {
     "inputs_topic": "/q2r_left_hand_inputs",
     "target_topic": "/quest_left_target_pose",
     "robot_pose_topic": "/left/rm_driver/udp_arm_position",
+    "joint_state_topic": "/left/joint_states",
     "command_topic": "/left/rm_driver/movep_canfd_cmd",
     "home_movej_topic": "/left/rm_driver/movej_canfd_cmd",
     "stop_topic": "/left/rm_driver/move_stop_cmd",
+    "status_topic": "/left/rm65_teleop/status",
+    "preview_topic": "/left/rm65_teleop/preview_target_pose",
+    "clear_fault_service": "/left/rm65_teleop/clear_fault",
+    "preview_frame_id": "left_rm65_base",
 }
-LEFT_HARDWARE_PROFILES = ("safe", "left_test")
-LEFT_TEST_VALUES = {
-    "translation_scale": 1.0,
-    "max_velocity_mps": 0.03,
-    "max_step_m": 0.00015,
-    "max_anchor_distance_m": 0.070,
-}
+LEFT_HARDWARE_PROFILES = ("safe", "normal")
+MOTION_KEYS = ("translation_scale", "max_velocity_mps", "max_step_m", "max_anchor_distance_m")
+SHARED_SAFETY_KEYS = (
+    "joint_state_timeout", "control_rate_hz", "max_control_period", "follow",
+    "stop_repeat_count", "target_timeout", "quest_pose_timeout", "inputs_timeout",
+    "robot_timeout", "unexpected_target_jump_m", "rotation_scale",
+    "max_angular_velocity_rad_s", "max_angular_step_rad", "max_anchor_angle_rad",
+    "unexpected_orientation_jump_rad", "workspace_min", "workspace_max",
+)
 
 
 def _validate_arguments(context):
@@ -59,23 +66,20 @@ def _validate_arguments(context):
         raise RuntimeError("start the left-only RM driver separately")
     if mode == "hardware":
         if LaunchConfiguration("motion_profile").perform(context) not in LEFT_HARDWARE_PROFILES:
-            raise RuntimeError("left hardware permits safe or left_test motion profile only")
-        path = Path(LaunchConfiguration("hardware_config_file").perform(context))
-        if not path.is_absolute() or not path.is_file():
-            raise RuntimeError("left hardware requires an absolute session hardware_config_file")
+            raise RuntimeError("left hardware permits safe or normal motion profile only")
     return []
 
 
-def _validate_hardware_config(config_path, package_share, profile):
+def _read_params(path, node):
     try:
-        document = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        params = document["left_rm65_teleop_adapter"]["ros__parameters"]
-        safe_doc = yaml.safe_load(
-            (Path(package_share) / "config" / "motion_profiles" / "safe.yaml")
-            .read_text(encoding="utf-8"))
-        safe = safe_doc["rm65_teleop_adapter"]["ros__parameters"]
-    except (OSError, KeyError, TypeError, ValueError) as exc:
-        raise RuntimeError("invalid left session hardware config") from exc
+        return yaml.safe_load(path.read_text(encoding="utf-8"))[node]["ros__parameters"]
+    except (OSError, KeyError, TypeError, ValueError, yaml.YAMLError) as exc:
+        raise RuntimeError(f"invalid parameter file: {path}") from exc
+
+
+def _validate_hardware_config(config_path, package_share):
+    params = _read_params(config_path, "left_rm65_teleop_adapter")
+    right = _read_params(Path(package_share) / "config" / "hardware.yaml", "rm65_teleop_adapter")
     for key, value in LEFT_HARDWARE_ENDPOINTS.items():
         if params.get(key) != value:
             raise RuntimeError(f"left hardware endpoint mismatch: {key}")
@@ -85,64 +89,43 @@ def _validate_hardware_config(config_path, package_share, profile):
         if params.get(key) is not value:
             raise RuntimeError(f"left hardware gate mismatch: {key}")
     if any(key in params for key in
-           ("home_action_name", "home_joint_degrees", "home_joint_names")):
+           ("home_action_name", "home_joint_degrees", "home_joint_names",
+            "home_button_field", "home_hold_seconds", "home_speed_deg_s")):
         raise RuntimeError("left Home must remain unconfigured")
     if params.get("mapping") != [0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0]:
-        raise RuntimeError("left first-motion mapping mismatch")
-    for key in ("translation_scale", "max_velocity_mps", "max_step_m"):
-        if params.get(key) != safe[key]:
-            raise RuntimeError(f"left first-motion {key} must equal safe profile")
-    expected_anchor_cap = 0.070 if profile == "left_test" else 0.051
-    if params.get("max_anchor_distance_m") != expected_anchor_cap:
-        raise RuntimeError(f"left hardware anchor cap must be {expected_anchor_cap} m")
-    for key, value in {"target_timeout": 0.20, "quest_pose_timeout": 0.20,
-                       "inputs_timeout": 0.20, "robot_timeout": 0.10}.items():
-        if params.get(key) != value:
-            raise RuntimeError(f"left watchdog change rejected: {key}")
-    bounds = [params.get("workspace_min"), params.get("workspace_max")]
-    if any(not isinstance(b, list) or len(b) != 3 for b in bounds):
-        raise RuntimeError("left first-motion workspace must have three axes")
-    try:
-        widths = [float(hi) - float(lo) for lo, hi in zip(*bounds)]
-        finite = all(math.isfinite(float(v)) for b in bounds for v in b)
-    except (TypeError, ValueError):
-        finite = False
-        widths = []
-    expected_widths = (0.140, 0.140, 0.140) if profile == "left_test" else (
-        0.010, 0.010, 0.0551)
-    if not finite or any(w <= 0 for w in widths) or any(
-        abs(actual - expected) > 1e-6
-        for actual, expected in zip(widths, expected_widths)
-    ):
-        raise RuntimeError("left hardware workspace does not match selected profile")
+        raise RuntimeError("left mapping mismatch")
+    for key in SHARED_SAFETY_KEYS:
+        if params.get(key) != right.get(key):
+            raise RuntimeError(f"left hardware safety mismatch: {key}")
+    safe = _read_params(Path(package_share) / "config" / "motion_profiles" / "safe.yaml",
+                        "rm65_teleop_adapter")
+    for key in MOTION_KEYS:
+        if params.get(key) != right.get(key) or params.get(key) != safe.get(key):
+            raise RuntimeError(f"left base motion mismatch: {key}")
 
 
-def _validate_left_test_profile(profile_path):
-    try:
-        document = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError) as exc:
-        raise RuntimeError("invalid left_test motion profile") from exc
-    expected = {"left_rm65_teleop_adapter": {"ros__parameters": LEFT_TEST_VALUES}}
-    if document != expected or any(
+def _normal_overlay(package_share):
+    path = Path(package_share) / "config" / "motion_profiles" / "normal.yaml"
+    params = _read_params(path, "rm65_teleop_adapter")
+    if set(params) != set(MOTION_KEYS) or any(
         isinstance(value, bool) or not isinstance(value, (int, float))
-        or not math.isfinite(value)
-        for value in document["left_rm65_teleop_adapter"]["ros__parameters"].values()
+        or not math.isfinite(value) or value <= 0
+        for value in params.values()
     ):
-        raise RuntimeError("left_test profile must contain only the four approved motion values")
+        raise RuntimeError("normal profile must contain four finite positive motion values")
+    return params
 
 
 def _adapter_parameter_files(context, package_share):
     _validate_arguments(context)
     if LaunchConfiguration("mode").perform(context) == "dry_run":
         return [str(Path(package_share) / "config" / "left_dry_run.yaml")]
-    config_path = Path(LaunchConfiguration("hardware_config_file").perform(context))
+    config_path = Path(package_share) / "config" / "left_hardware.yaml"
     profile = LaunchConfiguration("motion_profile").perform(context)
-    _validate_hardware_config(config_path, package_share, profile)
+    _validate_hardware_config(config_path, package_share)
     if profile == "safe":
         return [str(config_path)]
-    profile_path = Path(package_share) / "config" / "motion_profiles" / "left_test.yaml"
-    _validate_left_test_profile(profile_path)
-    return [str(config_path), str(profile_path)]
+    return [str(config_path), _normal_overlay(package_share)]
 
 
 def _adapter_node(context):
@@ -168,7 +151,6 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("mode", default_value="dry_run"),
         DeclareLaunchArgument("motion_profile", default_value="safe"),
-        DeclareLaunchArgument("hardware_config_file", default_value=""),
         DeclareLaunchArgument("start_rm_driver", default_value="false"),
         DeclareLaunchArgument("use_rviz", default_value="false"),
         # A live endpoint may already own TCP port 10000. Opt in only after checking.

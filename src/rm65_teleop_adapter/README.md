@@ -22,7 +22,7 @@ Hardware mode (right Home execution and B-release cancel hardware validated):
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py mode:=hardware
 ```
 
-## Shared left/right executable and left dry-run
+## Shared left/right executable and left hardware mode
 
 The same adapter executable and safety state machine serve one configured arm
 per process. Explicit `expected_adapter_node`, `expected_driver_node`, and
@@ -41,8 +41,27 @@ The left launch shares the parameterized Quest target bridge and read-only
 monitor. `start_tcp` defaults to `false` to avoid taking a port already owned
 by a live endpoint. Without fresh left robot feedback, the adapter remains
 `DISABLED`; isolated tests provide synthetic feedback only in domain 143.
-Left mapping, Grip hardware behavior, Home and workspace are not hardware
-validated. See `docs/progress/left-arm-teleop.md`.
+The versioned `left_hardware.yaml` enables only left Cartesian hardware
+teleop. The left launch defaults to dry-run; the explicit hardware invocation
+uses the same four normal motion values as the right arm without changing the
+right profile:
+
+```bash
+export ROS_DOMAIN_ID=42
+ros2 launch rm65_teleop_adapter left_quest_teleop.launch.py \
+  mode:=hardware motion_profile:=normal start_rm_driver:=false \
+  use_rviz:=false start_tcp:=true
+```
+
+Start exactly one left-only RM driver separately, with namespace remap
+`-r __ns:=/left` and no global `__node` remap. Keep left `rm_control` off.
+The left hardware workspace matches the right numeric bounds
+`[-1,-1,0]` to `[1,1,1.5]` m for the operator-authorized test; it is not a
+final collision/workcell envelope. Left Home, gripper and X/Y buttons remain
+disabled or unbound. The earlier `left_test` profile and local P0 workspaces
+are retired. Quest input gaps remain an open issue, with the existing
+watchdog/stop/rearm behavior unchanged. See `docs/progress/left-arm-teleop.md`
+for moving-hardware validation status.
 
 ## Motion profiles
 
