@@ -318,7 +318,8 @@ Orientation uses the existing world/base-frame convention:
 `DeltaR_Q=R_Q R_Q0^T`, `DeltaR_L=M_left DeltaR_Q M_left^T`, and
 `R_desired=DeltaR_L R_L0`. Real Quest plus real left robot-anchor dry-run
 preview passed the three XYZ signs and a small quaternion comparison on
-2026-09-25; actual left-arm movement is **not validated**. Physical left
+2026-09-25; moving-hardware evidence currently covers only the left +Z
+direction sign. Physical left
 Grip maps to `press_middle`, index to `press_index`, X to `button_lower`,
 and Y to `button_upper`. X/Y have no left Home, gripper, or motion binding.
 Left Home button/pose and general absolute workspace remain pending. Recurring
@@ -336,8 +337,8 @@ actions, or dual-arm operation.
 
 The left launch defaults to dry-run. Hardware mode requires an explicit
 session-specific config file with a fresh robot TCP anchor and a narrow
-absolute workspace; `motion_profile:=safe` is the only supported left
-hardware profile. Left Home remains disabled, and no `rm_control` or Home
+absolute workspace; left hardware accepts only `motion_profile:=safe` or the
+explicit test-only `motion_profile:=left_test`. Left Home remains disabled, and no `rm_control` or Home
 Action client is present. The Cartesian command topic is
 `/left/rm_driver/movep_canfd_cmd`; the adapter must be its sole publisher,
 and the left driver its sole subscriber. The adapter must be the sole
@@ -366,3 +367,30 @@ sign** has moving-hardware evidence. The operator's gesture also changed
 Quest Z and produced material left-base X motion, so pure single-axis tracking,
 the 50 mm target, the other axes and orientation remain unvalidated. The
 temporary session config does not establish a reusable left hardware workspace.
+
+### Left 50 mm scale test profile (test-only)
+
+`left_test` is an **explicit, left-hardware-validation-only** profile. It is
+never the launch default or automatically selected, and right launch keeps
+its separate `safe|normal|fast` allowlist and unchanged profile files. Left
+dry-run still loads only `left_dry_run.yaml`. Left hardware starts from an
+explicit fresh-P0 session config; choosing `left_test` overlays only these
+four values for `/left_rm65_teleop_adapter`:
+
+| Parameter | `left_test` |
+|---|---:|
+| `translation_scale` | `1.0` |
+| `max_velocity_mps` | `0.02` |
+| `max_step_m` | `0.00010` |
+| `max_anchor_distance_m` | `0.051` |
+
+The session config must still pass the existing left endpoint, hardware gate,
+Home-disabled, mapping, watchdog and narrow absolute workspace checks. The
+profile may not override any of those fields. For a fresh robot anchor P0,
+the one-session workspace is X/Y within 5 mm and Z from P0−5 mm to
+P0+50.1 mm (0.1 mm numerical tolerance only). A Quest +Y displacement of
+about 50 mm can therefore request about +50 mm left-base Z, subject to the
+unchanged watchdog and Grip release-to-press rearm rules. At 200 Hz nominal,
+the 0.10 mm step cap and 0.02 m/s velocity cap both correspond to at most
+20 mm/s. This profile does not authorize other axes, orientation, Home or
+general left-arm hardware use.

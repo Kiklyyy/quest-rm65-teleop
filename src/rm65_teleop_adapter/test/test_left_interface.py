@@ -127,7 +127,7 @@ def test_left_hardware_accepts_only_explicit_narrow_safe_config(tmp_path):
     path, config = session_config(tmp_path)
     context = context_for(mode="hardware", config_file=path)
     assert module._adapter_parameter_files(context, PACKAGE) == [str(path)]
-    with pytest.raises(RuntimeError, match="safe motion profile only"):
+    with pytest.raises(RuntimeError, match="safe or left_test"):
         module._validate_arguments(context_for(
             mode="hardware", config_file=path, profile="normal"))
 
@@ -136,6 +136,33 @@ def test_left_hardware_accepts_only_explicit_narrow_safe_config(tmp_path):
         "ros__parameters": config}}), encoding="utf-8")
     with pytest.raises(RuntimeError, match="narrow \\+Z box"):
         module._adapter_parameter_files(context, PACKAGE)
+
+
+def test_left_test_overlays_only_approved_motion_values(tmp_path):
+    module = left_launch_module()
+    path, config = session_config(tmp_path)
+    context = context_for(mode="hardware", config_file=path, profile="left_test")
+    profile_path = PACKAGE / "config" / "motion_profiles" / "left_test.yaml"
+    assert module._adapter_parameter_files(context, PACKAGE) == [
+        str(path), str(profile_path)]
+    with profile_path.open(encoding="utf-8") as stream:
+        document = yaml.safe_load(stream)
+    assert document == {"left_rm65_teleop_adapter": {"ros__parameters": {
+        "translation_scale": 1.0,
+        "max_velocity_mps": 0.02,
+        "max_step_m": 0.00010,
+        "max_anchor_distance_m": 0.051,
+    }}}
+    assert config["home_enabled"] is False
+    assert config["inputs_timeout"] == 0.20
+    assert config["quest_pose_timeout"] == 0.20
+    assert config["robot_timeout"] == 0.10
+
+    document["left_rm65_teleop_adapter"]["ros__parameters"]["inputs_timeout"] = 1.0
+    invalid = tmp_path / "invalid_left_test.yaml"
+    invalid.write_text(yaml.safe_dump(document), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="four approved motion values"):
+        module._validate_left_test_profile(invalid)
 
 
 def test_left_hardware_rejects_wrong_owner_and_widened_watchdog(tmp_path):

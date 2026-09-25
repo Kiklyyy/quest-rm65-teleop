@@ -42,6 +42,13 @@ LEFT_HARDWARE_ENDPOINTS = {
     "home_movej_topic": "/left/rm_driver/movej_canfd_cmd",
     "stop_topic": "/left/rm_driver/move_stop_cmd",
 }
+LEFT_HARDWARE_PROFILES = ("safe", "left_test")
+LEFT_TEST_VALUES = {
+    "translation_scale": 1.0,
+    "max_velocity_mps": 0.02,
+    "max_step_m": 0.00010,
+    "max_anchor_distance_m": 0.051,
+}
 
 
 def _validate_arguments(context):
@@ -51,8 +58,8 @@ def _validate_arguments(context):
     if LaunchConfiguration("start_rm_driver").perform(context).lower() != "false":
         raise RuntimeError("start the left-only RM driver separately")
     if mode == "hardware":
-        if LaunchConfiguration("motion_profile").perform(context) != "safe":
-            raise RuntimeError("left hardware permits safe motion profile only")
+        if LaunchConfiguration("motion_profile").perform(context) not in LEFT_HARDWARE_PROFILES:
+            raise RuntimeError("left hardware permits safe or left_test motion profile only")
         path = Path(LaunchConfiguration("hardware_config_file").perform(context))
         if not path.is_absolute() or not path.is_file():
             raise RuntimeError("left hardware requires an absolute session hardware_config_file")
@@ -107,20 +114,39 @@ def _validate_hardware_config(config_path, package_share):
         raise RuntimeError("left first-motion workspace must be a narrow +Z box")
 
 
+def _validate_left_test_profile(profile_path):
+    try:
+        document = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise RuntimeError("invalid left_test motion profile") from exc
+    expected = {"left_rm65_teleop_adapter": {"ros__parameters": LEFT_TEST_VALUES}}
+    if document != expected or any(
+        isinstance(value, bool) or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        for value in document["left_rm65_teleop_adapter"]["ros__parameters"].values()
+    ):
+        raise RuntimeError("left_test profile must contain only the four approved motion values")
+
+
 def _adapter_parameter_files(context, package_share):
     _validate_arguments(context)
     if LaunchConfiguration("mode").perform(context) == "dry_run":
         return [str(Path(package_share) / "config" / "left_dry_run.yaml")]
     config_path = Path(LaunchConfiguration("hardware_config_file").perform(context))
     _validate_hardware_config(config_path, package_share)
-    return [str(config_path)]
+    if LaunchConfiguration("motion_profile").perform(context) == "safe":
+        return [str(config_path)]
+    profile_path = Path(package_share) / "config" / "motion_profiles" / "left_test.yaml"
+    _validate_left_test_profile(profile_path)
+    return [str(config_path), str(profile_path)]
 
 
 def _adapter_node(context):
     package_share = Path(get_package_share_directory("rm65_teleop_adapter"))
     mode = LaunchConfiguration("mode").perform(context)
+    profile = LaunchConfiguration("motion_profile").perform(context)
     return [
-        LogInfo(msg=f"left teleop mode={mode.upper()} motion_profile=safe"),
+        LogInfo(msg=f"left teleop mode={mode.upper()} motion_profile={profile}"),
         Node(
             package="rm65_teleop_adapter",
             executable="rm65_teleop_adapter_node",

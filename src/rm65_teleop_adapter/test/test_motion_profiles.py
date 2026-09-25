@@ -88,11 +88,12 @@ def test_hardware_mode_loads_base_then_selected_profile(profile):
     ]
 
 
-def test_invalid_motion_profile_is_rejected():
+@pytest.mark.parametrize("profile", ["turbo", "left_test"])
+def test_invalid_motion_profile_is_rejected(profile):
     module = load_launch_module()
 
     with pytest.raises(RuntimeError, match="motion_profile"):
-        module._validate_arguments(context_for(motion_profile="turbo"))
+        module._validate_arguments(context_for(motion_profile=profile))
 
 
 def test_dry_run_does_not_load_hardware_or_motion_profile_config():
