@@ -368,7 +368,7 @@ Quest Z and produced material left-base X motion, so pure single-axis tracking,
 the 50 mm target, the other axes and orientation remain unvalidated. The
 temporary session config does not establish a reusable left hardware workspace.
 
-### Left 50 mm scale test profile (test-only)
+### Left XYZ Cartesian test profile (test-only)
 
 `left_test` is an **explicit, left-hardware-validation-only** profile. It is
 never the launch default or automatically selected, and right launch keeps
@@ -380,17 +380,21 @@ four values for `/left_rm65_teleop_adapter`:
 | Parameter | `left_test` |
 |---|---:|
 | `translation_scale` | `1.0` |
-| `max_velocity_mps` | `0.02` |
-| `max_step_m` | `0.00010` |
-| `max_anchor_distance_m` | `0.051` |
+| `max_velocity_mps` | `0.03` |
+| `max_step_m` | `0.00015` |
+| `max_anchor_distance_m` | `0.070` |
 
 The session config must still pass the existing left endpoint, hardware gate,
-Home-disabled, mapping, watchdog and narrow absolute workspace checks. The
-profile may not override any of those fields. For a fresh robot anchor P0,
-the one-session workspace is X/Y within 5 mm and Z from P0−5 mm to
-P0+50.1 mm (0.1 mm numerical tolerance only). A Quest +Y displacement of
-about 50 mm can therefore request about +50 mm left-base Z, subject to the
-unchanged watchdog and Grip release-to-press rearm rules. At 200 Hz nominal,
-the 0.10 mm step cap and 0.02 m/s velocity cap both correspond to at most
-20 mm/s. This profile does not authorize other axes, orientation, Home or
-general left-arm hardware use.
+Home-disabled, mapping, watchdog and session-specific absolute workspace checks. The
+profile may not override any of those fields. For each fresh session robot
+anchor P0, the temporary absolute workspace is a local Cartesian cube:
+each left-base axis from P0−70 mm to P0+70 mm. The 70 mm anchor-distance
+cap further bounds each Grip-anchored desired target radially. This envelope
+is only for sequential, individually re-anchored XYZ translation validation;
+it is not a general left-arm workspace. Quest +Y, +X and +Z displacements of
+about 40–50 mm can respectively request left-base +Z, −Y and −X movement,
+subject to the unchanged 200 ms input watchdogs, 100 ms robot watchdog and
+Grip release-to-press rearm rules. At 200 Hz nominal, the 0.15 mm step cap
+and 0.03 m/s velocity cap both correspond to at most 30 mm/s. This profile
+does not authorize intentional orientation motion, Home, gripper or dual-arm
+hardware use.

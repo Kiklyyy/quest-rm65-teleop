@@ -92,17 +92,18 @@ def context_for(mode="dry_run", config_file="", profile="safe", start_driver="fa
     return context
 
 
-def session_config(tmp_path):
+def session_config(tmp_path, profile="safe"):
     config = params("left_dry_run.yaml")
+    xyz_test = profile == "left_test"
     config.update({
         "dry_run": False,
         "hardware_write_enabled": True,
         "mapping_verified": True,
         "home_enabled": False,
         "follow": False,
-        "max_anchor_distance_m": 0.051,
-        "workspace_min": [0.089, -0.416, 0.548],
-        "workspace_max": [0.099, -0.406, 0.6031],
+        "max_anchor_distance_m": 0.070 if xyz_test else 0.051,
+        "workspace_min": [0.024, -0.481, 0.483] if xyz_test else [0.089, -0.416, 0.548],
+        "workspace_max": [0.164, -0.341, 0.623] if xyz_test else [0.099, -0.406, 0.6031],
     })
     path = tmp_path / "session.yaml"
     path.write_text(yaml.safe_dump({"left_rm65_teleop_adapter": {
@@ -134,13 +135,13 @@ def test_left_hardware_accepts_only_explicit_narrow_safe_config(tmp_path):
     config["workspace_max"][2] = 1.5
     path.write_text(yaml.safe_dump({"left_rm65_teleop_adapter": {
         "ros__parameters": config}}), encoding="utf-8")
-    with pytest.raises(RuntimeError, match="narrow \\+Z box"):
+    with pytest.raises(RuntimeError, match="workspace does not match selected profile"):
         module._adapter_parameter_files(context, PACKAGE)
 
 
 def test_left_test_overlays_only_approved_motion_values(tmp_path):
     module = left_launch_module()
-    path, config = session_config(tmp_path)
+    path, config = session_config(tmp_path, profile="left_test")
     context = context_for(mode="hardware", config_file=path, profile="left_test")
     profile_path = PACKAGE / "config" / "motion_profiles" / "left_test.yaml"
     assert module._adapter_parameter_files(context, PACKAGE) == [
@@ -149,14 +150,20 @@ def test_left_test_overlays_only_approved_motion_values(tmp_path):
         document = yaml.safe_load(stream)
     assert document == {"left_rm65_teleop_adapter": {"ros__parameters": {
         "translation_scale": 1.0,
-        "max_velocity_mps": 0.02,
-        "max_step_m": 0.00010,
-        "max_anchor_distance_m": 0.051,
+        "max_velocity_mps": 0.03,
+        "max_step_m": 0.00015,
+        "max_anchor_distance_m": 0.070,
     }}}
     assert config["home_enabled"] is False
     assert config["inputs_timeout"] == 0.20
     assert config["quest_pose_timeout"] == 0.20
     assert config["robot_timeout"] == 0.10
+
+    config["workspace_max"][0] += 0.001
+    path.write_text(yaml.safe_dump({"left_rm65_teleop_adapter": {
+        "ros__parameters": config}}), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="workspace does not match selected profile"):
+        module._adapter_parameter_files(context, PACKAGE)
 
     document["left_rm65_teleop_adapter"]["ros__parameters"]["inputs_timeout"] = 1.0
     invalid = tmp_path / "invalid_left_test.yaml"

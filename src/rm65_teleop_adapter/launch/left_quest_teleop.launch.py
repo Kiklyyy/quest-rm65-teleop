@@ -45,9 +45,9 @@ LEFT_HARDWARE_ENDPOINTS = {
 LEFT_HARDWARE_PROFILES = ("safe", "left_test")
 LEFT_TEST_VALUES = {
     "translation_scale": 1.0,
-    "max_velocity_mps": 0.02,
-    "max_step_m": 0.00010,
-    "max_anchor_distance_m": 0.051,
+    "max_velocity_mps": 0.03,
+    "max_step_m": 0.00015,
+    "max_anchor_distance_m": 0.070,
 }
 
 
@@ -66,7 +66,7 @@ def _validate_arguments(context):
     return []
 
 
-def _validate_hardware_config(config_path, package_share):
+def _validate_hardware_config(config_path, package_share, profile):
     try:
         document = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         params = document["left_rm65_teleop_adapter"]["ros__parameters"]
@@ -92,8 +92,9 @@ def _validate_hardware_config(config_path, package_share):
     for key in ("translation_scale", "max_velocity_mps", "max_step_m"):
         if params.get(key) != safe[key]:
             raise RuntimeError(f"left first-motion {key} must equal safe profile")
-    if params.get("max_anchor_distance_m") != 0.051:
-        raise RuntimeError("left first-motion anchor cap must be 0.051 m")
+    expected_anchor_cap = 0.070 if profile == "left_test" else 0.051
+    if params.get("max_anchor_distance_m") != expected_anchor_cap:
+        raise RuntimeError(f"left hardware anchor cap must be {expected_anchor_cap} m")
     for key, value in {"target_timeout": 0.20, "quest_pose_timeout": 0.20,
                        "inputs_timeout": 0.20, "robot_timeout": 0.10}.items():
         if params.get(key) != value:
@@ -107,11 +108,13 @@ def _validate_hardware_config(config_path, package_share):
     except (TypeError, ValueError):
         finite = False
         widths = []
+    expected_widths = (0.140, 0.140, 0.140) if profile == "left_test" else (
+        0.010, 0.010, 0.0551)
     if not finite or any(w <= 0 for w in widths) or any(
         abs(actual - expected) > 1e-6
-        for actual, expected in zip(widths, (0.010, 0.010, 0.0551))
+        for actual, expected in zip(widths, expected_widths)
     ):
-        raise RuntimeError("left first-motion workspace must be a narrow +Z box")
+        raise RuntimeError("left hardware workspace does not match selected profile")
 
 
 def _validate_left_test_profile(profile_path):
@@ -133,8 +136,9 @@ def _adapter_parameter_files(context, package_share):
     if LaunchConfiguration("mode").perform(context) == "dry_run":
         return [str(Path(package_share) / "config" / "left_dry_run.yaml")]
     config_path = Path(LaunchConfiguration("hardware_config_file").perform(context))
-    _validate_hardware_config(config_path, package_share)
-    if LaunchConfiguration("motion_profile").perform(context) == "safe":
+    profile = LaunchConfiguration("motion_profile").perform(context)
+    _validate_hardware_config(config_path, package_share, profile)
+    if profile == "safe":
         return [str(config_path)]
     profile_path = Path(package_share) / "config" / "motion_profiles" / "left_test.yaml"
     _validate_left_test_profile(profile_path)
