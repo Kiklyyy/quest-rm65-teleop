@@ -265,3 +265,57 @@ driver 必须以 `/right` namespace 和右臂参数单独启动。启动 driver 
 - `HOMING` permits only this joint action and emits no `/right/rm_driver/movep_canfd_cmd`. B release, input/joint watchdog, invalid feedback, or exclusive-path/control-period failure requests cancel+stop; `HOMING` persists until the action terminal result. Success or acknowledged cancel -> `REARM_REQUIRED`, followed by B release and Grip release-to-press. Rejection or abort -> `FAULT`.
 - `/right/rm65_teleop/status` retains `state`, `deadman_pressed`, `command_path_ready`, and `reason`; adds `quest_pose_age_ms`, `inputs_age_ms`, `robot_age_ms`, `joint_state_age_ms`, `rearm_count`, `watchdog_count`, `home_button_pressed`, `home_hold_progress`, and `home_action_state`. The read-only monitor displays `JOINTS=OK|LOST` and concise `HOME` state.
 - Complete automated result after new Home target: 206 tests, 0 errors, 0 failures, 0 skipped. Synthetic result: 5 test-action goals, 4 cancels, 1 success, 0 Cartesian hardware commands. Subsequent operator-confirmed real tests validated multiple four-point Home returns from away-from-Home postures (about 5–7 s), physical stop on mid-motion B release, and terminal `home_action_state=CANCELED`. The RealMan controller can report successful completion after a stop; `HomeActionClient` maps that terminal success to `CANCELED` only when a local cancel was already pending. The final sampled adapter state was `ARMED` with Grip and B released, both command paths ready, and no automatic transition to `ACTIVE`. Quest pose and inputs still have occasional simultaneous >200 ms gaps (previous maximum about 343 ms), causing watchdog/rearm; input stability remains open.
+
+
+## Shared RM65 adapter endpoint contract (left software phase)
+
+The same `rm65_teleop_adapter_node` executable and safety state machine serve
+one configured arm per process. The right launch retains its existing endpoints;
+the left launch uses a distinct node identity and dry-run configuration. No
+hardware write is authorized for the left arm in this phase.
+
+| Parameter | Right instance | Left dry-run instance |
+|---|---|---|
+| `expected_adapter_node` | `/rm65_teleop_adapter` | `/left_rm65_teleop_adapter` |
+| `expected_driver_node` | `/right/rm_driver` | `/left/rm_driver` |
+| `expected_control_node` | `/right/rm_control` | `/left/rm_control` |
+| `quest_pose_topic` | `/q2r_right_hand_pose` | `/q2r_left_hand_pose` |
+| `inputs_topic` | `/q2r_right_hand_inputs` | `/q2r_left_hand_inputs` |
+| `target_topic` | `/quest_right_target_pose` | `/quest_left_target_pose` |
+| `robot_pose_topic` | `/right/rm_driver/udp_arm_position` | `/left/rm_driver/udp_arm_position` |
+| `joint_state_topic` | `/right/joint_states` | `/left/joint_states` |
+| `command_topic` | `/right/rm_driver/movep_canfd_cmd` | `/left/rm_driver/movep_canfd_cmd` |
+| `home_movej_topic` | `/right/rm_driver/movej_canfd_cmd` | `/left/rm_driver/movej_canfd_cmd` |
+| `stop_topic` | `/right/rm_driver/move_stop_cmd` | `/left/rm_driver/move_stop_cmd` |
+| `home_action_name` | `/right/rm_group_controller/follow_joint_trajectory` | unset; Home disabled |
+| `status_topic` | `/right/rm65_teleop/status` | `/left/rm65_teleop/status` |
+| `preview_topic` | `/right/rm65_teleop/preview_target_pose` | `/left/rm65_teleop/preview_target_pose` |
+| `clear_fault_service` | `/right/rm65_teleop/clear_fault` | `/left/rm65_teleop/clear_fault` |
+| `preview_frame_id` | `right_rm65_base` | `left_rm65_base` (preview label only) |
+| `mapping` | `[0,0,1, -1,0,0, 0,-1,0]` | `[0,0,-1, -1,0,0, 0,1,0]` |
+
+All safety-critical node identities are complete absolute names. Hardware
+command ownership must match the configured adapter, driver, and controller
+identities exactly; any extra publisher/subscriber or a cross-arm identity
+fails closed. A dry-run instance creates preview/status only: no `movep`,
+`move_stop`, or real Home Action client. Left `hardware_write_enabled=false`,
+`mapping_verified=false`, and `home_enabled=false` remain mandatory until a
+separate hardware acceptance stage. Right Home settings and right safety gates
+remain unchanged.
+
+The Quest target bridge is shared through parameters for hand pose/inputs,
+target pose/marker, `world` frame, and marker namespace. It publishes a
+Quest-world relative target; RM base mapping belongs only in the adapter.
+For the left instance these topics are `/q2r_left_hand_pose`,
+`/q2r_left_hand_inputs`, `/quest_left_target_pose`, and
+`/quest_left_target_marker`.
+
+Operator-confirmed physical axes: Quest world `+X=forward`, `+Y=left`,
+`+Z=up`; left RM65 base `+X=down`, `+Y=back`, `+Z=left`. The mathematically
+derived left mapping is `dx=-Quest_dz`, `dy=-Quest_dx`, `dz=Quest_dy`, with
+`M_left=[[0,0,-1],[-1,0,0],[0,1,0]]`, `M M^T=I`, and `det(M)=+1`.
+Orientation uses the existing world/base-frame convention:
+`DeltaR_Q=R_Q R_Q0^T`, `DeltaR_L=M_left DeltaR_Q M_left^T`, and
+`R_desired=DeltaR_L R_L0`. This mapping is **not left-hardware validated**.
+Left face-button mapping, Home button/pose, physical Grip acceptance, and
+workspace are pending; face buttons have no left motion behavior.

@@ -177,5 +177,47 @@ TEST(QuaternionMath, RotationMatrixConversionRejectsImproperMatrix)
   EXPECT_FALSE(rotation_matrix_to_quaternion(reflection).has_value());
 }
 
+constexpr Matrix3RowMajor kLeftMapping{
+  0.0, 0.0, -1.0,
+  -1.0, 0.0, 0.0,
+  0.0, 1.0, 0.0};
+
+TEST(QuaternionMath, LeftMappingIsProperAndMapsAllBasisRotations)
+{
+  EXPECT_TRUE(is_proper_rotation_matrix(kLeftMapping));
+  const std::vector<std::tuple<QuaternionXyzw, QuaternionXyzw>> cases{
+    {axis_angle(1.0, 0.0, 0.0, kPi / 2.0),
+      axis_angle(0.0, -1.0, 0.0, kPi / 2.0)},
+    {axis_angle(0.0, 1.0, 0.0, kPi / 2.0),
+      axis_angle(0.0, 0.0, 1.0, kPi / 2.0)},
+    {axis_angle(0.0, 0.0, 1.0, kPi / 2.0),
+      axis_angle(-1.0, 0.0, 0.0, kPi / 2.0)}};
+  for (const auto & [quest, expected_rm] : cases) {
+    const auto mapped = map_relative_rotation(quest, kLeftMapping);
+    EXPECT_NEAR(shortest_angular_distance(mapped, expected_rm), 0.0, 1.0e-12);
+    const auto sign_equivalent = map_relative_rotation(negate(quest), kLeftMapping);
+    EXPECT_NEAR(shortest_angular_distance(mapped, sign_equivalent), 0.0, 1.0e-12);
+    const auto normalized = normalize_quaternion(mapped);
+    ASSERT_TRUE(normalized.has_value());
+    EXPECT_NEAR(quaternion_dot(*normalized, *normalized), 1.0, 1.0e-12);
+  }
+}
+
+TEST(QuaternionMath, LeftWorldDeltaMultipliesRobotAnchorOnLeft)
+{
+  const auto quest_anchor = axis_angle(1.0, 0.0, 0.0, 0.7);
+  const auto quest_delta = axis_angle(0.0, 1.0, 0.0, 0.4);
+  const auto quest_current = hamilton_product(quest_delta, quest_anchor);
+  const auto robot_anchor = axis_angle(1.0, 0.0, 0.0, 0.5);
+  const auto mapped = map_relative_rotation(
+    relative_world_rotation(quest_current, quest_anchor), kLeftMapping);
+  const auto result = compose_world_relative_rotation(mapped, robot_anchor);
+  const auto expected = hamilton_product(
+    axis_angle(0.0, 0.0, 1.0, 0.4), robot_anchor);
+  EXPECT_NEAR(shortest_angular_distance(result, expected), 0.0, 1.0e-12);
+  const auto body_frame_wrong = hamilton_product(robot_anchor, mapped);
+  EXPECT_GT(shortest_angular_distance(result, body_frame_wrong), 0.01);
+}
+
 }  // namespace
 }  // namespace rm65_teleop_adapter
