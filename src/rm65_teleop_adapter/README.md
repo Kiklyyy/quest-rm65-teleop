@@ -14,9 +14,9 @@ Dry-run:
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py
 ```
 
-Hardware mode (real Home validation remains pending):
+Hardware mode (right Home execution and B-release cancel hardware validated):
 
-> **Hardware warning:** real RM65 Home validation = pending. Synthetic Home evidence is not real-arm acceptance.
+> **Hardware warning:** Quest pose and inputs can still have simultaneous gaps beyond the 200 ms watchdog timeout. Check current input freshness and command-path ownership before hardware use.
 
 ```bash
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py mode:=hardware
@@ -48,7 +48,7 @@ workspace, control timing, follow/stop behavior, and topic names remain in
 
 Normal profile hardware example:
 
-> **Hardware warning:** The `normal` profile field evidence does not validate the new Home operation.
+> **Hardware warning:** The `normal` profile has qualitative feel-test evidence only; its exact speed, stopping margin, and long-duration stability remain unmeasured.
 
 ```bash
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
@@ -69,7 +69,7 @@ review, not a recommended safety boundary.
 
 Fast profile hardware example:
 
-> **Hardware warning:** `fast` is unverified for hardware use; Home also awaits manual validation.
+> **Hardware warning:** `fast` is unverified for hardware use. Quest/TCP input stability remains open.
 
 ```bash
 ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
@@ -223,10 +223,15 @@ enters `FAULT` and sends stop.
 `dry_run.yaml` has `home_enabled: false`; it creates no real Home action client.
 The isolated synthetic probe uses `ROS_DOMAIN_ID=143`, localhost-only and
 `/test/home/*` endpoints. Its result was 5 test-only goals, 4 cancels, 1
-success, 0 Cartesian commands, and 0 real command publishers. **real RM65
-Home validation = pending.** No RM driver or real Home goal was started in this
-validation. A separate dry-run node graph check found no real Home action
-client and no real Cartesian command publisher.
+success, 0 Cartesian commands, and 0 real command publishers. No RM
+driver or real Home goal was started in that synthetic validation. A separate
+dry-run node graph check found no real Home action client and no real Cartesian
+command publisher. Subsequent operator-confirmed hardware tests validated
+multiple four-point Home returns and a mid-motion B-release physical stop.
+RealMan can return terminal `SUCCEEDED` after stop; when a local cancel was
+pending, the adapter reports `CANCELED`. The final sampled Home action state
+was `CANCELED`, with adapter `ARMED` after B and Grip release. See
+`docs/progress/right-arm-recenter-home.md` for the chronological evidence.
 
 The status JSON adds input ages, joint age/health, Home button/hold/action
 state, and rearm/watchdog counts. The read-only monitor shows `JOINTS` and
@@ -280,16 +285,17 @@ wait "$adapter_pid" 2>/dev/null || true
 
 This older probe verifies software preview behavior and zero hardware-command
 publishers only. Live Quest quaternion and qualitative real RM65 orientation
-evidence are recorded in `STATUS.md`; real RM65 Home validation remains pending.
+evidence are recorded in `STATUS.md`; subsequent right Home execution and
+B-release cancel hardware validation are recorded in the Home progress document.
 
 ## Run hardware mode
 
 Only after the right-arm driver, workspace, emergency stop, unique command source,
 and live Quest inputs have been checked:
 
-> **Hardware warning:** real RM65 Home validation = pending. The operator must
-> separately accept the temporary Home posture, mid-motion B-release stop, and
-> post-Home reauthorization before treating Home as field-validated.
+> **Hardware warning:** right Home execution and mid-motion B-release
+> stop/cancel have been field-validated. Quest/TCP input dropouts beyond 200 ms
+> remain an open stability issue; retain the existing freshness/rearm gates.
 
 ```bash
 ros2 launch rm65_teleop_adapter hardware.launch.py

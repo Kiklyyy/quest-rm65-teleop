@@ -2,7 +2,7 @@
 
 这是一个用于两位同学及各自 GPT/Codex 协作的私有源码快照仓库。它汇集当前实验室实际使用的 Quest2ROS2、`quest2ros` 自定义消息包和带现场补丁的 ROS TCP Endpoint，并记录接口、验证状态和分工。
 
-> **当前安全边界：** 已实现的链路止于 Quest 右手柄到虚拟 Pose/Marker。尚未打通、验收或授权 RM65 真机遥操作。任何 push 都只是代码同步，不代表部署、重启或启用机器人。
+> **当前状态：** 右手 Quest → 右 RM65 的 XYZ、orientation/6DoF、Grip deadman 和 Home 已由现场操作者完成真机验证；Home 的运动中松开 B 停止与取消状态也已验证。Quest/TCP 输入仍会偶发超过 200 ms 的同步断流，触发 watchdog/rearm，稳定性问题尚未解决。左臂、夹爪和双臂控制仍未实现或验收。任何 push 都只是代码同步，不代表部署、重启或启用机器人。
 
 ## 目录结构
 
@@ -10,6 +10,7 @@
 |---|---|
 | `src/Quest2ROS2/` | Quest 输入、模拟输入、右手虚拟目标 bridge 及其单元测试 |
 | `src/quest2ros/` | `OVR2ROSInputs` 与 `OVR2ROSHapticFeedback` 自定义消息定义 |
+| `src/rm65_teleop_adapter/` | 右 RM65 Quest 6DoF 遥操作、安全状态机与 Home Action |
 | `src/ros_tcp_communication/` | Unity/Quest 到 ROS 2 的 TCP Endpoint，包含当前现场通信补丁 |
 | `docs/` | 来源追溯、接口契约和 A/B 两条开发进度线 |
 
@@ -60,7 +61,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
   src/Quest2ROS2/test/test_quest_right_target_bridge.py
 ```
 
-本次发布只在 Windows 独立目录整理和审计源码，没有在这个新 clone 中重新运行 ROS 构建或测试；此前机器人 worktree 的验证证据及其边界记录在 [STATUS.md](STATUS.md)。
+早期源码快照导入时只在 Windows 独立目录整理和审计，未在新 clone 中重新运行 ROS 构建或测试。此后右臂 worktree 已完成 ROS 构建、自动化测试和现场真机验收；当前证据与边界见 [STATUS.md](STATUS.md) 及 [右臂 Home 进度](docs/progress/right-arm-recenter-home.md)。
 
 ## 新旧路径
 

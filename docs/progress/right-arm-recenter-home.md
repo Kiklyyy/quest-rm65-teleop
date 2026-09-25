@@ -5,8 +5,8 @@
 - Branch: `feat/recenter-home`.
 - Ubuntu worktree: `/home/lh/quest2ros2_ws/.worktrees/recenter-home`.
 - Base: current `origin/main` at `0247970097e4fb86c5be443e6a5b3d43c745502e`.
-- Only the right-arm adapter and its interfaces were changed. `/home/lh/robot` was sourced for interfaces and was not edited. No RM driver, real Home goal, left arm, or gripper operation was started.
-- **real RM65 Home validation = pending.**
+- Only the right-arm adapter and its interfaces were changed. `/home/lh/robot` was sourced for interfaces and was not edited. At the initial software checkpoint, no RM driver, real Home goal, left arm, or gripper operation was started. The later real-arm results are recorded chronologically below.
+- **Current closeout: right RM65 Home execution and mid-motion B-release cancel hardware validated.** Quest/TCP input stability remains open. Earlier pending statements below describe their respective checkpoints, before the subsequent hardware tests.
 
 ## Confirmed controls and configuration
 
@@ -163,3 +163,12 @@ RED -> GREEN fixes during Task 7 addressed: a post-Home B/Grip rearm race; missi
 - `HomeActionClient` now snapshots `cancel_requested_` as `cancellation_was_requested` on entry to the terminal result callback, before clearing the flag. A terminal `SUCCEEDED` with `FollowJointTrajectory::Result::SUCCESSFUL` reports `HomeActionEvent::CANCELED` only when that local cancel request was pending. Ordinary success without a cancel request remains `SUCCEEDED`; actual `CANCELED` and abort handling are unchanged. The adapter still waits for the real Action terminal callback before leaving `HOMING`. No `/home/lh/robot` file was modified.
 - Only `rm65_teleop_adapter` was built on the Ubuntu ROS host with system Python/colcon. Isolated `ROS_DOMAIN_ID=143`, `ROS_LOCALHOST_ONLY=1` targeted `test_home_action_client` passed: CTest 1/1 executable, GTest 8/8 cases, 0 failures/errors. The new case sends a goal, requests cancel, has the synthetic vendor return successful `SUCCEEDED`, and requires a `CANCELED` adapter event. The existing normal-success case ran and still required `SUCCEEDED`. The full regression was intentionally not run.
 - No real Home goal, Cartesian command, manual stop, or robot motion was initiated by this checkpoint. One controlled approximately five-second real Home with B released during motion remains the final onsite compatibility check: verify physical stop and final adapter `CANCELED`/`REARM_REQUIRED` before closing this phase. This is still pending and must not be described as validated by the targeted test.
+
+
+## Right Home hardware closeout (operator-confirmed)
+
+- The formal Home target remains `[68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]` degrees in joint1–joint6 order. The old temporary target is retired.
+- The initial one-point trajectory logged `First Move_group give us 1 points` and crashed `rm_control`. After the four-point trajectory fix, multiple real goals logged `First Move_group give us 4 points` and `Goal Succeeded`, including returns from clearly away-from-Home postures lasting about 5–7 seconds. This is real motion validation, not an already-at-Home success.
+- The onsite operator then performed the final mid-motion B-release test. The arm physically stopped. RealMan can emit terminal `SUCCEEDED/SUCCESSFUL` after stop clears its internal `point_changed`; the adapter's locally pending cancel compatibility rule reports `HomeActionEvent::CANCELED` only in that case. The final sampled status was `state=ARMED`, `deadman_pressed=false`, `home_button_pressed=false`, `home_hold_progress=0`, `home_action_state=CANCELED`, `command_path_ready=true`, `home_command_path_ready=true`, `reason=""`. `ARMED` is the expected state after `HOMING → REARM_REQUIRED → released B and Grip with fresh input → ARMED`; the adapter did not re-enter `ACTIVE`.
+- Ubuntu `rm65_teleop_adapter` build and targeted `test_home_action_client` passed after the compatibility fix (CTest 1/1, GTest 8/8). The full earlier regression after the new target was 206 tests, 0 errors/failures/skips. This documentation checkpoint performed no new hardware motion or test run.
+- **Closed:** right Home execution, B-release physical stop/cancel, and pending-local-cancel/vendor-success compatibility are hardware validated. **Open, separate issue:** Quest pose and inputs can simultaneously gap beyond 200 ms (previous observed maximum about 343 ms), raising watchdog/rearm counters. Do not treat this Home closeout as a Quest/TCP stability fix.

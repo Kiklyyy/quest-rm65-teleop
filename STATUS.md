@@ -1,6 +1,6 @@
 # Project Status
 
-更新日期：2026-09-24
+更新日期：2026-09-25
 
 ## 当前总体阶段
 
@@ -11,7 +11,7 @@
 当前正式姿态参数恢复为 rotation_scale=1.0、90 deg/s、0.01 rad/cycle、90 deg
 单次 Grip anchor 上限。夹爪、左臂、双臂和完整安全验收仍未完成。
 
-## Right RM65 Home + stability branch (software evidence)
+## Right RM65 Home + stability branch (hardware validated; input stability open)
 
 - Branch `feat/recenter-home` locks physical A=`button_lower` (reserved) and B=`button_upper` (Home). Grip `press_middle` remains the 0.60/0.40 teleop deadman.
 - Hardware Home configuration: J1..J6 names `joint1` through `joint6`, operator-confirmed 2026-09-24 target degrees `[68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]`, hold 1.5 s, nominal maximum average joint speed 15 deg/s, action `/right/rm_group_controller/follow_joint_trajectory`. The old temporary target `[-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]` is retired.
@@ -19,8 +19,10 @@
 - Four-package worktree build and automated suite after new Home configuration: 206 tests, 0 errors, 0 failures, 0 skipped (`/usr/bin/colcon test-result --test-result-base build --all --verbose`).
 - `ROS_DOMAIN_ID=143`, `ROS_LOCALHOST_ONLY=1` synthetic integration: 5 test-only Home goals, 4 cancels (B release, stale Quest pose, invalid joint feedback, shutdown), 1 success, 0 Cartesian commands, 0 real command publishers. A separate dry-run node exposed no real Home action client. No RM driver was started.
 - Whole-branch safety review fixed RED-to-GREEN findings for Home rearm/button race, invalid feedback, command-path and cycle guards, invalid-joint diagnostics, and shutdown cancel+stop delivery.
-- **New Home target configured; real Home motion/cancel validation still pending.** The 2026-09-24 operator confirmed the then-current right-arm posture after fresh samples differed materially from the earlier preflight posture. The adapter was rebuilt and restarted with the new target; a read-only post-restart sample was within 0.008 deg on all six joints. Sampled state was `ARMED`, `home_action_state=IDLE`, and both command paths ready. No real Home action was sent or real RM65 Home motion started.
-- **Idle stability NO-GO (2026-09-24):** A 135.0 s read-only observation after startup found three recurring watchdog events, `120 -> 123`, all `input_not_fresh`. Quest Pose and Inputs simultaneously had 311-343 ms receive gaps beyond their 200 ms timeouts, and status briefly entered `REARM_REQUIRED` three times. Robot/joint feedback stayed below 100 ms; the target bridge kept publishing about 50 Hz during raw Quest gaps. No timeout or motion setting was changed. Investigate Quest/TCP input delivery before a real Home motion test.
+- **Right Home execution and B-release cancel hardware validated.** The 2026-09-24 operator confirmed the new target after fresh samples differed from the earlier preflight posture; the read-only post-restart delta was within 0.008 deg on all six joints. An initial one-point goal crashed `rm_control`; the four-point RealMan-compatible trajectory subsequently returned from clearly away-from-Home postures multiple times in about 5–7 s. During a later mid-motion B release, the arm physically stopped. Because RealMan can report terminal `SUCCEEDED` after `/move_stop_cmd`, commit `ce371c0` maps that result to adapter `CANCELED` only when a local cancel was pending. The final operator-provided status sample showed `home_action_state=CANCELED`, state `ARMED`, Grip and B released, both command paths ready, and no automatic `ACTIVE`. This checkpoint records the operator’s hardware observations; no robot motion was initiated by the documentation update.
+- **Quest/TCP input stability remains open (2026-09-24 observation):** A 135.0 s read-only run found three recurring watchdog events, `120 -> 123`, all `input_not_fresh`. Quest Pose and Inputs simultaneously had 311–343 ms receive gaps beyond their 200 ms timeouts, and status briefly entered `REARM_REQUIRED` three times. Robot/joint feedback stayed below 100 ms; the target bridge kept publishing about 50 Hz during raw Quest gaps. No timeout or motion setting was changed. This remains a separate stability issue after Home hardware validation.
+
+- The targeted Ubuntu adapter build and `test_home_action_client` after the cancel compatibility change passed: CTest 1/1 executable, GTest 8/8 cases. The existing normal-success case remains `SUCCEEDED`; pending-local-cancel plus vendor success becomes `CANCELED`. The full suite was not rerun for the documentation closeout.
 
 ## Right-arm 6DoF orientation implementation
 
