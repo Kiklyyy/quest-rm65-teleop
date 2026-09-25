@@ -321,5 +321,43 @@ preview passed the three XYZ signs and a small quaternion comparison on
 2026-09-25; actual left-arm movement is **not validated**. Physical left
 Grip maps to `press_middle`, index to `press_index`, X to `button_lower`,
 and Y to `button_upper`. X/Y have no left Home, gripper, or motion binding.
-Left Home button/pose and absolute workspace remain pending. Recurring
-Quest Pose/Inputs dropouts keep the first left hardware movement at NO-GO.
+Left Home button/pose and general absolute workspace remain pending. Recurring
+Quest Pose/Inputs dropouts ended the initial dry-run preflight at NO-GO.
+
+### Left first Cartesian movement gate (2026-09-25)
+
+The onsite operator has separately authorized one left-only Cartesian
+microtest: Quest left-hand physical left (`+Y`) to left RM base `+Z`
+(robot physical left), with about 50 mm requested robot TCP travel. This
+authorization accepts the known Quest input interruption risk for this one
+test; the existing 200 ms Pose/Inputs watchdogs and stop/rearm behavior are
+unchanged. It does not authorize other axes, wrist rotation, Home, face-button
+actions, or dual-arm operation.
+
+The left launch defaults to dry-run. Hardware mode requires an explicit
+session-specific config file with a fresh robot TCP anchor and a narrow
+absolute workspace; `motion_profile:=safe` is the only supported left
+hardware profile. Left Home remains disabled, and no `rm_control` or Home
+Action client is present. The Cartesian command topic is
+`/left/rm_driver/movep_canfd_cmd`; the adapter must be its sole publisher,
+and the left driver its sole subscriber. The adapter must be the sole
+`/left/rm_driver/move_stop_cmd` publisher, with the driver its sole subscriber.
+The left movej topic must have no publisher.
+
+The prepared one-session workspace used a fresh TCP `P0`: X and Y each within
+5 mm of P0, and Z from P0 − 5 mm to P0 + 50 mm. Translation scale,
+Cartesian velocity and step cap are the existing safe values (0.2,
+0.005 m/s, 0.00005 m). `max_anchor_distance_m` measures the **desired robot
+target** distance from the captured robot anchor, before rate limiting;
+the previous 0.03 m cap cannot reach +50 mm. A minimal 0.051 m cap covers
+the narrow box corner while the absolute workspace still limits the target.
+`rotation_scale=0` is rejected by the current adapter validator, so this
+test retains its existing orientation mapping and requires the operator to
+keep the wrist approximately fixed. Real hardware orientation response is
+outside this test's acceptance claim.
+
+The prepared first-motion session on 2026-09-25 stopped **before Grip or
+robot movement** because raw Quest input stopped for 236.648 s and the Ubuntu
+SSH observation link became unreliable. No left Cartesian direction has yet
+been validated on moving hardware. The temporary session config does not
+establish a reusable left hardware workspace.

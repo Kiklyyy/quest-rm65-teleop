@@ -1,4 +1,4 @@
-"""Left software interface contracts; no robot graph or hardware commands."""
+"""Left endpoint and first-motion launch safety contracts, without robot output."""
 
 import importlib.util
 from pathlib import Path
@@ -73,16 +73,84 @@ def test_left_config_is_isolated_and_fail_closed():
     assert "home_action_name" not in left
 
 
-def test_left_launch_cannot_enter_hardware_mode():
+def left_launch_module():
     launch = PACKAGE / "launch" / "left_quest_teleop.launch.py"
     spec = importlib.util.spec_from_file_location("left_quest_teleop_launch", launch)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def context_for(mode="dry_run", config_file="", profile="safe", start_driver="false"):
     context = LaunchContext()
-    context.launch_configurations["mode"] = "hardware"
-    with pytest.raises(RuntimeError, match="dry_run"):
-        module._validate_arguments(context)
-    context.launch_configurations["mode"] = "dry_run"
+    context.launch_configurations.update({
+        "mode": mode,
+        "motion_profile": profile,
+        "hardware_config_file": str(config_file),
+        "start_rm_driver": start_driver,
+    })
+    return context
+
+
+def session_config(tmp_path):
+    config = params("left_dry_run.yaml")
+    config.update({
+        "dry_run": False,
+        "hardware_write_enabled": True,
+        "mapping_verified": True,
+        "home_enabled": False,
+        "follow": False,
+        "max_anchor_distance_m": 0.051,
+        "workspace_min": [0.089, -0.416, 0.548],
+        "workspace_max": [0.099, -0.406, 0.6031],
+    })
+    path = tmp_path / "session.yaml"
+    path.write_text(yaml.safe_dump({"left_rm65_teleop_adapter": {
+        "ros__parameters": config}}), encoding="utf-8")
+    return path, config
+
+
+def test_left_launch_defaults_to_dry_run_and_rejects_implicit_hardware():
+    module = left_launch_module()
+    context = context_for()
     assert module._adapter_parameter_files(context, PACKAGE) == [
         str(PACKAGE / "config" / "left_dry_run.yaml")
     ]
+    with pytest.raises(RuntimeError, match="hardware_config_file"):
+        module._validate_arguments(context_for(mode="hardware"))
+    with pytest.raises(RuntimeError, match="driver separately"):
+        module._validate_arguments(context_for(start_driver="true"))
+
+
+def test_left_hardware_accepts_only_explicit_narrow_safe_config(tmp_path):
+    module = left_launch_module()
+    path, config = session_config(tmp_path)
+    context = context_for(mode="hardware", config_file=path)
+    assert module._adapter_parameter_files(context, PACKAGE) == [str(path)]
+    with pytest.raises(RuntimeError, match="safe motion profile only"):
+        module._validate_arguments(context_for(
+            mode="hardware", config_file=path, profile="normal"))
+
+    config["workspace_max"][2] = 1.5
+    path.write_text(yaml.safe_dump({"left_rm65_teleop_adapter": {
+        "ros__parameters": config}}), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="narrow \\+Z box"):
+        module._adapter_parameter_files(context, PACKAGE)
+
+
+def test_left_hardware_rejects_wrong_owner_and_widened_watchdog(tmp_path):
+    module = left_launch_module()
+    path, config = session_config(tmp_path)
+    context = context_for(mode="hardware", config_file=path)
+    config["expected_driver_node"] = "/right/rm_driver"
+    path.write_text(yaml.safe_dump({"left_rm65_teleop_adapter": {
+        "ros__parameters": config}}), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="endpoint mismatch"):
+        module._adapter_parameter_files(context, PACKAGE)
+
+    config["expected_driver_node"] = "/left/rm_driver"
+    config["inputs_timeout"] = 1.0
+    path.write_text(yaml.safe_dump({"left_rm65_teleop_adapter": {
+        "ros__parameters": config}}), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="watchdog change rejected"):
+        module._adapter_parameter_files(context, PACKAGE)

@@ -1,6 +1,9 @@
-"""Software-only Quest left-hand RM65 preview; no left hardware outputs."""
+"""Left Quest preview or one bounded Cartesian hardware session."""
 
+import math
 from pathlib import Path
+
+import yaml
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
@@ -27,23 +30,97 @@ LEFT_MONITOR = {
     "joint_state_topic": "/left/joint_states",
     "status_topic": "/left/rm65_teleop/status",
 }
+LEFT_HARDWARE_ENDPOINTS = {
+    "expected_adapter_node": "/left_rm65_teleop_adapter",
+    "expected_driver_node": "/left/rm_driver",
+    "expected_control_node": "/left/rm_control",
+    "quest_pose_topic": "/q2r_left_hand_pose",
+    "inputs_topic": "/q2r_left_hand_inputs",
+    "target_topic": "/quest_left_target_pose",
+    "robot_pose_topic": "/left/rm_driver/udp_arm_position",
+    "command_topic": "/left/rm_driver/movep_canfd_cmd",
+    "home_movej_topic": "/left/rm_driver/movej_canfd_cmd",
+    "stop_topic": "/left/rm_driver/move_stop_cmd",
+}
 
 
 def _validate_arguments(context):
-    if LaunchConfiguration("mode").perform(context) != "dry_run":
-        raise RuntimeError("left launch permits dry_run only; hardware is not validated")
+    mode = LaunchConfiguration("mode").perform(context)
+    if mode not in ("dry_run", "hardware"):
+        raise RuntimeError("left mode must be dry_run or hardware")
+    if LaunchConfiguration("start_rm_driver").perform(context).lower() != "false":
+        raise RuntimeError("start the left-only RM driver separately")
+    if mode == "hardware":
+        if LaunchConfiguration("motion_profile").perform(context) != "safe":
+            raise RuntimeError("left hardware permits safe motion profile only")
+        path = Path(LaunchConfiguration("hardware_config_file").perform(context))
+        if not path.is_absolute() or not path.is_file():
+            raise RuntimeError("left hardware requires an absolute session hardware_config_file")
     return []
+
+
+def _validate_hardware_config(config_path, package_share):
+    try:
+        document = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        params = document["left_rm65_teleop_adapter"]["ros__parameters"]
+        safe_doc = yaml.safe_load(
+            (Path(package_share) / "config" / "motion_profiles" / "safe.yaml")
+            .read_text(encoding="utf-8"))
+        safe = safe_doc["rm65_teleop_adapter"]["ros__parameters"]
+    except (OSError, KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError("invalid left session hardware config") from exc
+    for key, value in LEFT_HARDWARE_ENDPOINTS.items():
+        if params.get(key) != value:
+            raise RuntimeError(f"left hardware endpoint mismatch: {key}")
+    for key, value in {"dry_run": False, "hardware_write_enabled": True,
+                       "mapping_verified": True, "home_enabled": False,
+                       "follow": False}.items():
+        if params.get(key) is not value:
+            raise RuntimeError(f"left hardware gate mismatch: {key}")
+    if any(key in params for key in
+           ("home_action_name", "home_joint_degrees", "home_joint_names")):
+        raise RuntimeError("left Home must remain unconfigured")
+    if params.get("mapping") != [0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0]:
+        raise RuntimeError("left first-motion mapping mismatch")
+    for key in ("translation_scale", "max_velocity_mps", "max_step_m"):
+        if params.get(key) != safe[key]:
+            raise RuntimeError(f"left first-motion {key} must equal safe profile")
+    if params.get("max_anchor_distance_m") != 0.051:
+        raise RuntimeError("left first-motion anchor cap must be 0.051 m")
+    for key, value in {"target_timeout": 0.20, "quest_pose_timeout": 0.20,
+                       "inputs_timeout": 0.20, "robot_timeout": 0.10}.items():
+        if params.get(key) != value:
+            raise RuntimeError(f"left watchdog change rejected: {key}")
+    bounds = [params.get("workspace_min"), params.get("workspace_max")]
+    if any(not isinstance(b, list) or len(b) != 3 for b in bounds):
+        raise RuntimeError("left first-motion workspace must have three axes")
+    try:
+        widths = [float(hi) - float(lo) for lo, hi in zip(*bounds)]
+        finite = all(math.isfinite(float(v)) for b in bounds for v in b)
+    except (TypeError, ValueError):
+        finite = False
+        widths = []
+    if not finite or any(w <= 0 for w in widths) or any(
+        abs(actual - expected) > 1e-6
+        for actual, expected in zip(widths, (0.010, 0.010, 0.0551))
+    ):
+        raise RuntimeError("left first-motion workspace must be a narrow +Z box")
 
 
 def _adapter_parameter_files(context, package_share):
     _validate_arguments(context)
-    return [str(Path(package_share) / "config" / "left_dry_run.yaml")]
+    if LaunchConfiguration("mode").perform(context) == "dry_run":
+        return [str(Path(package_share) / "config" / "left_dry_run.yaml")]
+    config_path = Path(LaunchConfiguration("hardware_config_file").perform(context))
+    _validate_hardware_config(config_path, package_share)
+    return [str(config_path)]
 
 
 def _adapter_node(context):
     package_share = Path(get_package_share_directory("rm65_teleop_adapter"))
+    mode = LaunchConfiguration("mode").perform(context)
     return [
-        LogInfo(msg="left teleop DRY_RUN only; no left RM65 hardware publisher"),
+        LogInfo(msg=f"left teleop mode={mode.upper()} motion_profile=safe"),
         Node(
             package="rm65_teleop_adapter",
             executable="rm65_teleop_adapter_node",
@@ -60,6 +137,9 @@ def generate_launch_description():
     rviz_config = package_share / "config" / "left_quest_teleop.rviz"
     return LaunchDescription([
         DeclareLaunchArgument("mode", default_value="dry_run"),
+        DeclareLaunchArgument("motion_profile", default_value="safe"),
+        DeclareLaunchArgument("hardware_config_file", default_value=""),
+        DeclareLaunchArgument("start_rm_driver", default_value="false"),
         DeclareLaunchArgument("use_rviz", default_value="false"),
         # A live endpoint may already own TCP port 10000. Opt in only after checking.
         DeclareLaunchArgument("start_tcp", default_value="false"),
