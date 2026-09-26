@@ -1,0 +1,50 @@
+# Operator-authorized temporary left hardware test workspace; not a final collision envelope.
+left_rm65_teleop_adapter:
+  ros__parameters:
+    expected_adapter_node: /left_rm65_teleop_adapter
+    expected_driver_node: /left/rm_driver
+    expected_control_node: /left/rm_control
+    quest_pose_topic: /q2r_left_hand_pose
+    inputs_topic: /q2r_left_hand_inputs
+    target_topic: /quest_left_target_pose
+    robot_pose_topic: /left/rm_driver/udp_arm_position
+    joint_state_topic: /left/joint_states
+    command_topic: /left/rm_driver/movep_canfd_cmd
+    home_movej_topic: /left/rm_driver/movej_canfd_cmd
+    stop_topic: /left/rm_driver/move_stop_cmd
+    status_topic: /left/rm65_teleop/status
+    preview_topic: /left/rm65_teleop/preview_target_pose
+    clear_fault_service: /left/rm65_teleop/clear_fault
+    preview_frame_id: left_rm65_base
+    dry_run: false
+    hardware_write_enabled: true
+    mapping_verified: true
+    home_button_field: upper
+    home_enabled: true
+    home_hold_seconds: 1.5
+    home_speed_deg_s: 15.0
+    home_joint_degrees: [-90.52991560598026, -7.43359734865227, -62.41522144150158, -3.5143370089334374, -37.08400247904573, 99.21228312734117]
+    home_joint_names: [joint1, joint2, joint3, joint4, joint5, joint6]
+    home_action_name: /left/rm_group_controller/follow_joint_trajectory
+    joint_state_timeout: 0.10
+    control_rate_hz: 200.0
+    max_control_period: 0.050
+    follow: false
+    stop_repeat_count: 3
+    mapping: [0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    translation_scale: 0.2
+    target_timeout: 0.20
+    quest_pose_timeout: 0.20
+    inputs_timeout: 0.20
+    robot_timeout: 0.10
+    max_velocity_mps: 0.005
+    max_step_m: 0.00005
+    max_anchor_distance_m: 0.03
+    unexpected_target_jump_m: 0.10
+    rotation_scale: 1.0
+    max_angular_velocity_rad_s: 1.5707963267948966
+    max_angular_step_rad: 0.01
+    max_anchor_angle_rad: 1.5707963267948966
+    unexpected_orientation_jump_rad: 0.7853981633974483
+    workspace_min: [-1.0, -1.0, 0.0]
+    workspace_max: [1.0, 1.0, 1.5]

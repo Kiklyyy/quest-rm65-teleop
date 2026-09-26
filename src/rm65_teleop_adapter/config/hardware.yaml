@@ -1,5 +1,19 @@
 rm65_teleop_adapter:
   ros__parameters:
+    expected_adapter_node: /rm65_teleop_adapter
+    expected_driver_node: /right/rm_driver
+    expected_control_node: /right/rm_control
+    quest_pose_topic: /q2r_right_hand_pose
+    inputs_topic: /q2r_right_hand_inputs
+    target_topic: /quest_right_target_pose
+    robot_pose_topic: /right/rm_driver/udp_arm_position
+    joint_state_topic: /right/joint_states
+    command_topic: /right/rm_driver/movep_canfd_cmd
+    home_movej_topic: /right/rm_driver/movej_canfd_cmd
+    stop_topic: /right/rm_driver/move_stop_cmd
+    status_topic: /right/rm65_teleop/status
+    preview_topic: /right/rm65_teleop/preview_target_pose
+    clear_fault_service: /right/rm65_teleop/clear_fault
     dry_run: false
     hardware_write_enabled: true
     mapping_verified: true

@@ -64,12 +64,14 @@ def test_build_target_marker_fields():
 def test_node_name_topics_types_and_timer_are_wired_exactly():
     with (
         patch.object(Node, "__init__", return_value=None) as node_init,
+        patch.object(Node, "declare_parameter", side_effect=lambda _name, default: Mock(value=default)) as declare_parameter,
         patch.object(Node, "create_subscription") as create_subscription,
         patch.object(Node, "create_publisher") as create_publisher,
         patch.object(Node, "create_timer") as create_timer,
     ):
         bridge = QuestRightTargetBridge()
     node_init.assert_called_once_with("quest_right_target_bridge")
+    assert declare_parameter.call_count == 6
     assert create_subscription.call_count == 2
     assert create_subscription.call_args_list[0].args == (PoseStamped, POSE_TOPIC, bridge._pose_callback, 10)
     assert create_subscription.call_args_list[1].args == (OVR2ROSInputs, INPUTS_TOPIC, bridge._inputs_callback, 10)
@@ -202,6 +204,8 @@ def test_timer_checks_watchdog_and_continuously_publishes_same_target():
     bridge._logic.target = TARGET
     bridge._target_pose_publisher = Mock()
     bridge._target_marker_publisher = Mock()
+    bridge._frame_id = WORLD_FRAME
+    bridge._marker_namespace = MARKER_NAMESPACE
     stamp = make_stamp()
     clock = Mock()
     clock.now.return_value.to_msg.return_value = stamp

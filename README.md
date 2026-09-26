@@ -16,6 +16,28 @@
 
 详细状态见 [STATUS.md](STATUS.md)，接口与安全约束见 [docs/INTERFACE.md](docs/INTERFACE.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 
+## 左臂软件预览阶段
+
+`feat/left-rm65-teleop` 在右臂 Home 收尾提交 `074e0fa` 之上复用同一套 adapter
+安全状态机，新增左手 Quest target bridge、左臂映射与独立 dry-run 入口。
+左臂配置明确关闭硬件写入和 Home；物理 Grip、Home 按钮/姿态、工作空间及左臂真机
+映射均待现场确认。完整证据见 [左臂进度](docs/progress/left-arm-teleop.md)。
+
+在与真机隔离的测试域中，使用已构建的左臂 worktree 运行：
+
+```bash
+source /opt/ros/humble/setup.bash
+source /home/lh/robot/install/setup.bash
+source /home/lh/quest2ros2_ws/.worktrees/left-rm65-teleop/install/setup.bash
+export ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1
+ros2 launch rm65_teleop_adapter left_quest_teleop.launch.py \
+  mode:=dry_run use_rviz:=false start_tcp:=false
+```
+
+此入口默认不启动第二个 TCP endpoint，不启动左 driver/control。没有左臂反馈的
+普通启动会保持 `DISABLED`；已在隔离测试中用模拟反馈验证预览输出。不要把隔离
+测试输入发布到现场真机域。
+
 ## 环境基线
 
 - Ubuntu 22.04

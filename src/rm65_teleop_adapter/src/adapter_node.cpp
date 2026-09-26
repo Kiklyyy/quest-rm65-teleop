@@ -78,9 +78,15 @@ bool finite_position(const geometry_msgs::msg::PoseStamped & pose)
 }
 
 using Endpoint = std::pair<std::string, std::string>;
-const Endpoint kAdapter{"rm65_teleop_adapter", "/"};
-const Endpoint kDriver{"rm_driver", "/right"};
-const Endpoint kController{"rm_control", "/right"};
+Endpoint parse_absolute_node(const std::string & full_name)
+{
+  const auto slash = full_name.rfind('/');
+  if (full_name.empty() || full_name.front() != '/' || slash == std::string::npos ||
+      slash == full_name.size() - 1 || full_name.find("//") != std::string::npos) {
+    throw std::invalid_argument("expected node identities must be complete absolute names");
+  }
+  return {full_name.substr(slash + 1), slash == 0 ? "/" : full_name.substr(0, slash)};
+}
 
 bool exactly_these_endpoints(
   const std::vector<rclcpp::TopicEndpointInfo> & actual,
@@ -121,6 +127,21 @@ public:
               "hardware mode requires dry_run=false, hardware_write_enabled=true and mapping_verified=true");
     }
     hardware_mode_ = !dry_run_ && hardware_write_enabled_ && mapping_verified_;
+    const auto adapter_node_name = declare_parameter<std::string>(
+      "expected_adapter_node", "/rm65_teleop_adapter");
+    const auto driver_node_name = declare_parameter<std::string>(
+      "expected_driver_node", "/right/rm_driver");
+    expected_controller_node_name_ = declare_parameter<std::string>(
+      "expected_control_node", "/right/rm_control");
+    expected_adapter_ = parse_absolute_node(adapter_node_name);
+    expected_driver_ = parse_absolute_node(driver_node_name);
+    expected_controller_ = parse_absolute_node(expected_controller_node_name_);
+    if (adapter_node_name != get_fully_qualified_name() ||
+        expected_adapter_ == expected_driver_ ||
+        expected_adapter_ == expected_controller_ ||
+        expected_driver_ == expected_controller_) {
+      throw std::invalid_argument("configured command node identities must be distinct and match this adapter");
+    }
     home_enabled_ = declare_parameter<bool>("home_enabled", false);
     HomeParameterSet home_parameters;
     home_parameters.dry_run = dry_run_;
@@ -206,10 +227,19 @@ public:
       throw std::invalid_argument("Home requires a movej command topic");
     }
 
+    const auto preview_topic = declare_parameter<std::string>(
+      "preview_topic", "/right/rm65_teleop/preview_target_pose");
+    const auto status_topic = declare_parameter<std::string>(
+      "status_topic", "/right/rm65_teleop/status");
+    const auto clear_fault_service = declare_parameter<std::string>(
+      "clear_fault_service", "/right/rm65_teleop/clear_fault");
+    if (preview_topic.empty() || status_topic.empty() || clear_fault_service.empty()) {
+      throw std::invalid_argument("adapter status, preview and clear-fault endpoints are required");
+    }
     preview_publisher_ = create_publisher<geometry_msgs::msg::PoseStamped>(
-      "/right/rm65_teleop/preview_target_pose", 10);
+      preview_topic, 10);
     status_publisher_ = create_publisher<std_msgs::msg::String>(
-      "/right/rm65_teleop/status", 10);
+      status_topic, 10);
     if (hardware_mode_) {
       command_publisher_ = create_publisher<rm_ros_interfaces::msg::Cartepos>(command_topic_, 10);
       stop_publisher_ = create_publisher<std_msgs::msg::Empty>(stop_topic_, 10);
@@ -274,7 +304,7 @@ public:
     }
 
     clear_fault_service_ = create_service<std_srvs::srv::Trigger>(
-      "/right/rm65_teleop/clear_fault",
+      clear_fault_service,
       [this](const std_srvs::srv::Trigger::Request::SharedPtr,
         std_srvs::srv::Trigger::Response::SharedPtr response) {
         response->success = logic_->clear_fault(deadman_pressed_);
@@ -320,35 +350,35 @@ private:
   {
     if (!hardware_mode_) return {true, false};
     const bool movep_owned = exactly_these_endpoints(
-      get_publishers_info_by_topic(command_topic_), {kAdapter},
+      get_publishers_info_by_topic(command_topic_), {expected_adapter_},
       "rm_ros_interfaces/msg/Cartepos") &&
       exactly_these_endpoints(
-      get_subscriptions_info_by_topic(command_topic_), {kDriver},
+      get_subscriptions_info_by_topic(command_topic_), {expected_driver_},
       "rm_ros_interfaces/msg/Cartepos");
     const bool stop_owned = exactly_these_endpoints(
-      get_publishers_info_by_topic(stop_topic_), {kAdapter}, "std_msgs/msg/Empty");
+      get_publishers_info_by_topic(stop_topic_), {expected_adapter_}, "std_msgs/msg/Empty");
     const auto stop_subscribers = get_subscriptions_info_by_topic(stop_topic_);
     const bool driver_only_stop = exactly_these_endpoints(
-      stop_subscribers, {kDriver}, "std_msgs/msg/Empty");
+      stop_subscribers, {expected_driver_}, "std_msgs/msg/Empty");
     const bool home_stop = exactly_these_endpoints(
-      stop_subscribers, {kDriver, kController}, "std_msgs/msg/Empty");
+      stop_subscribers, {expected_driver_, expected_controller_}, "std_msgs/msg/Empty");
     const auto node_names = get_node_names();
     const bool controller_unique =
-      std::count(node_names.begin(), node_names.end(), "/right/rm_control") == 1;
+      std::count(node_names.begin(), node_names.end(), expected_controller_node_name_) == 1;
     const bool cartesian = movep_owned && stop_owned &&
       (driver_only_stop || (home_stop && controller_unique));
     if (!home_config_ || !cartesian || !home_stop || !controller_unique) {
       return {cartesian, false};
     }
     const bool movej_owned = exactly_these_endpoints(
-      get_publishers_info_by_topic(home_movej_topic_), {kController},
+      get_publishers_info_by_topic(home_movej_topic_), {expected_controller_},
       "rm_ros_interfaces/msg/Jointpos") &&
       exactly_these_endpoints(
-      get_subscriptions_info_by_topic(home_movej_topic_), {kDriver},
+      get_subscriptions_info_by_topic(home_movej_topic_), {expected_driver_},
       "rm_ros_interfaces/msg/Jointpos");
     const bool action_owned = exactly_these_endpoints(
       get_publishers_info_by_topic(home_config_->action_name + "/_action/status"),
-      {kController}, "action_msgs/msg/GoalStatusArray") &&
+      {expected_controller_}, "action_msgs/msg/GoalStatusArray") &&
       home_client_ && home_client_->server_ready();
     return {cartesian, movej_owned && action_owned};
   }
@@ -532,6 +562,8 @@ private:
   double target_timeout_{0.20}, quest_pose_timeout_{0.20}, inputs_timeout_{0.20};
   double robot_timeout_{0.10}, max_control_period_{0.010}, max_cycle_period_seen_{0.0};
   std::string preview_frame_id_, command_topic_, home_movej_topic_, stop_topic_;
+  std::string expected_controller_node_name_;
+  Endpoint expected_adapter_, expected_driver_, expected_controller_;
   geometry_msgs::msg::PoseStamped target_pose_;
   Pose3 robot_pose_;
   SteadyClock::time_point target_time_{}, quest_pose_time_{}, inputs_time_{}, robot_time_{};

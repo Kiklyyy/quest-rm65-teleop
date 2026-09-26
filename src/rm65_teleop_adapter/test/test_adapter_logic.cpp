@@ -223,6 +223,27 @@ TEST(AdapterLogic, PhysicalAxisMappingMatchesVerifiedFrames)
   EXPECT_NEAR(output.command->position[2], 0.48, 1e-12);
 }
 
+TEST(AdapterLogic, LeftPhysicalAxisMappingUsesSharedStateMachine)
+{
+  AdapterConfig config;
+  config.mapping = {
+    0.0, 0.0, -1.0,
+    -1.0, 0.0, 0.0,
+    0.0, 1.0, 0.0};
+  config.max_velocity_mps = 10.0;
+  config.max_step_m = 1.0;
+  config.max_anchor_distance_m = 1.0;
+  AdapterLogic logic(config);
+  auto input = fresh_input();
+  activate(logic, input);
+  input.target_pose.position = {0.01, 0.02, 0.03};
+  const auto output = logic.update(input);
+  ASSERT_TRUE(output.command.has_value());
+  EXPECT_NEAR(output.command->position[0], 0.37, 1e-12);
+  EXPECT_NEAR(output.command->position[1], -0.01, 1e-12);
+  EXPECT_NEAR(output.command->position[2], 0.52, 1e-12);
+}
+
 TEST(AdapterLogic, AnchorDistanceViolationLatchesFault)
 {
   AdapterConfig config;

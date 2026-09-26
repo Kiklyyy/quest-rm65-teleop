@@ -207,18 +207,29 @@ def test_home_synthetic_probe():
                     wait_for(lambda: node.latest_state() == "HOMING", "first HOMING")
                     first_goal = node.goals[0]
                     assert first_goal.trajectory.joint_names == [f"joint{i}" for i in range(1, 7)]
-                    assert len(first_goal.trajectory.points) == 1
-                    actual_positions = first_goal.trajectory.points[0].positions
+                    points = first_goal.trajectory.points
+                    assert len(points) == 4  # RealMan requires its >3-point spline branch.
                     expected_degrees = [68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]
                     current_radians = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
-                    assert all(math.isfinite(x) for x in actual_positions)
+                    assert all(math.isclose(a, c, abs_tol=1e-9)
+                               for a, c in zip(points[0].positions, current_radians))
+                    actual_positions = points[-1].positions
                     for actual, degrees in zip(actual_positions, expected_degrees):
                         assert math.isclose(actual, math.radians(degrees), abs_tol=1e-9)
-                    duration_msg = first_goal.trajectory.points[0].time_from_start
-                    duration = duration_msg.sec + duration_msg.nanosec * 1e-9
-                    assert duration > 0
+                    times = []
+                    for point in points:
+                        assert len(point.positions) == len(point.velocities) == \
+                            len(point.accelerations) == 6
+                        assert all(math.isfinite(x) for values in
+                                   (point.positions, point.velocities, point.accelerations)
+                                   for x in values)
+                        times.append(point.time_from_start.sec +
+                                     point.time_from_start.nanosec * 1e-9)
+                    assert times[0] == 0.0
+                    assert times == sorted(times) and len(set(times)) == 4
+                    duration = times[-1]
                     assert max(abs(a - c) for a, c in zip(actual_positions, current_radians)) <= \
-                        duration * math.radians(15.0) + 1e-8
+                        duration * math.radians(15.0) / 1.5 + 1e-8
                     node.grip = 1.0
                     node.quest_x = 0.01
                     time.sleep(0.3)
@@ -365,6 +376,8 @@ def test_command_path_ownership_probe():
     action = None
     unknown = None
     duplicate = None
+    cross_driver = None
+    cross_controller = None
     process = None
     try:
         with tempfile.TemporaryDirectory(prefix="home_graph_") as temp:
@@ -402,7 +415,8 @@ def test_command_path_ownership_probe():
                              "driver-only Cartesian path")
 
                     controller = Node("rm_control", namespace="/right")
-                    controller.create_publisher(Jointpos, PREFIX + "/movej_cmd", 10)
+                    controller_movej = controller.create_publisher(
+                        Jointpos, PREFIX + "/movej_cmd", 10)
                     controller.create_subscription(Empty, PREFIX + "/stop", lambda _: None, 10)
                     action = ActionServer(
                         controller, FollowJointTrajectory, PREFIX + "/action",
@@ -430,6 +444,38 @@ def test_command_path_ownership_probe():
                     wait_for(lambda: paths() == (False, False), "unknown stop subscriber blocked")
                     unknown.destroy_subscription(extra_stop)
                     wait_for(lambda: paths() == (True, True), "stop path restored")
+
+                    # A cross-arm endpoint on the same test-only command topic
+                    # must not be accepted as this right adapter's driver.
+                    cross_driver = Node("rm_driver", namespace="/left")
+                    executor.add_node(cross_driver)
+                    cross_movep = cross_driver.create_subscription(
+                        Cartepos, PREFIX + "/movep_cmd", lambda _: None, 10)
+                    wait_for(lambda: paths() == (False, False),
+                             "extra left driver endpoint blocked")
+                    driver.destroy_subscription(driver.command_sub)
+                    wait_for(lambda: paths() == (False, False),
+                             "left driver cannot replace right driver")
+                    cross_driver.destroy_subscription(cross_movep)
+                    driver.command_sub = driver.create_subscription(
+                        Cartepos, PREFIX + "/movep_cmd", driver._command, 10)
+                    wait_for(lambda: paths() == (True, True),
+                             "right driver endpoint restored")
+
+                    cross_controller = Node("rm_control", namespace="/left")
+                    executor.add_node(cross_controller)
+                    cross_movej = cross_controller.create_publisher(
+                        Jointpos, PREFIX + "/movej_cmd", 10)
+                    wait_for(lambda: paths() == (True, False),
+                             "extra left controller endpoint blocked")
+                    controller.destroy_publisher(controller_movej)
+                    wait_for(lambda: paths() == (True, False),
+                             "left controller cannot replace right controller")
+                    cross_controller.destroy_publisher(cross_movej)
+                    controller_movej = controller.create_publisher(
+                        Jointpos, PREFIX + "/movej_cmd", 10)
+                    wait_for(lambda: paths() == (True, True),
+                             "right controller endpoint restored")
 
                     duplicate = Node("rm_control", namespace="/right")
                     executor.add_node(duplicate)

@@ -265,3 +265,117 @@ driver 必须以 `/right` namespace 和右臂参数单独启动。启动 driver 
 - `HOMING` permits only this joint action and emits no `/right/rm_driver/movep_canfd_cmd`. B release, input/joint watchdog, invalid feedback, or exclusive-path/control-period failure requests cancel+stop; `HOMING` persists until the action terminal result. Success or acknowledged cancel -> `REARM_REQUIRED`, followed by B release and Grip release-to-press. Rejection or abort -> `FAULT`.
 - `/right/rm65_teleop/status` retains `state`, `deadman_pressed`, `command_path_ready`, and `reason`; adds `quest_pose_age_ms`, `inputs_age_ms`, `robot_age_ms`, `joint_state_age_ms`, `rearm_count`, `watchdog_count`, `home_button_pressed`, `home_hold_progress`, and `home_action_state`. The read-only monitor displays `JOINTS=OK|LOST` and concise `HOME` state.
 - Complete automated result after new Home target: 206 tests, 0 errors, 0 failures, 0 skipped. Synthetic result: 5 test-action goals, 4 cancels, 1 success, 0 Cartesian hardware commands. Subsequent operator-confirmed real tests validated multiple four-point Home returns from away-from-Home postures (about 5–7 s), physical stop on mid-motion B release, and terminal `home_action_state=CANCELED`. The RealMan controller can report successful completion after a stop; `HomeActionClient` maps that terminal success to `CANCELED` only when a local cancel was already pending. The final sampled adapter state was `ARMED` with Grip and B released, both command paths ready, and no automatic transition to `ACTIVE`. Quest pose and inputs still have occasional simultaneous >200 ms gaps (previous maximum about 343 ms), causing watchdog/rearm; input stability remains open.
+
+
+## Shared RM65 adapter endpoint contract (left hardware validation phase)
+
+The same `rm65_teleop_adapter_node` executable and safety state machine serve
+one configured arm per process. The right launch retains its existing endpoints;
+the left launch uses a distinct node identity and separate dry-run and hardware
+configurations. Hardware writes are enabled only by explicit `mode:=hardware`.
+
+| Parameter | Right instance | Left instance |
+|---|---|---|
+| `expected_adapter_node` | `/rm65_teleop_adapter` | `/left_rm65_teleop_adapter` |
+| `expected_driver_node` | `/right/rm_driver` | `/left/rm_driver` |
+| `expected_control_node` | `/right/rm_control` | `/left/rm_control` |
+| `quest_pose_topic` | `/q2r_right_hand_pose` | `/q2r_left_hand_pose` |
+| `inputs_topic` | `/q2r_right_hand_inputs` | `/q2r_left_hand_inputs` |
+| `target_topic` | `/quest_right_target_pose` | `/quest_left_target_pose` |
+| `robot_pose_topic` | `/right/rm_driver/udp_arm_position` | `/left/rm_driver/udp_arm_position` |
+| `joint_state_topic` | `/right/joint_states` | `/left/joint_states` |
+| `command_topic` | `/right/rm_driver/movep_canfd_cmd` | `/left/rm_driver/movep_canfd_cmd` |
+| `home_movej_topic` | `/right/rm_driver/movej_canfd_cmd` | `/left/rm_driver/movej_canfd_cmd` |
+| `stop_topic` | `/right/rm_driver/move_stop_cmd` | `/left/rm_driver/move_stop_cmd` |
+| `home_action_name` | `/right/rm_group_controller/follow_joint_trajectory` | `/left/rm_group_controller/follow_joint_trajectory` (hardware only) |
+| `status_topic` | `/right/rm65_teleop/status` | `/left/rm65_teleop/status` |
+| `preview_topic` | `/right/rm65_teleop/preview_target_pose` | `/left/rm65_teleop/preview_target_pose` |
+| `clear_fault_service` | `/right/rm65_teleop/clear_fault` | `/left/rm65_teleop/clear_fault` |
+| `preview_frame_id` | `right_rm65_base` | `left_rm65_base` (preview label only) |
+| `mapping` | `[0,0,1, -1,0,0, 0,-1,0]` | `[0,0,-1, -1,0,0, 0,1,0]` |
+
+All safety-critical node identities are complete absolute names. Hardware
+command ownership must match the configured adapter, driver, and controller
+identities exactly; any extra publisher/subscriber or a cross-arm identity
+fails closed. A dry-run instance creates preview/status only: no `movep`,
+`move_stop`, or real Home Action client. Left dry-run keeps
+`hardware_write_enabled=false`, `mapping_verified=false`, and
+`home_enabled=false`; explicit left hardware mode uses `true` for all three.
+Right Home settings and right safety gates remain unchanged.
+
+The same Home implementation serves both arms through per-arm configuration.
+Right physical B and left physical Y each provide that arm's `button_upper`;
+neither can trigger the other arm. Both require Grip released and a continuous
+1.5 s hold while `ARMED`, then send the existing four-point smoothstep
+`FollowJointTrajectory` at a nominal 15 deg/s joint speed. During `HOMING`,
+Cartesian commands are suppressed. Releasing the Home button requests Action
+cancel plus physical stop; the adapter stays `HOMING` until a terminal result.
+Success or acknowledged cancel enters `REARM_REQUIRED`, and a fresh Grip press
+after released inputs is required to resume teleop. The shared RealMan
+compatibility rule reports terminal vendor success as `CANCELED` only when a
+local cancel was already pending. Left hardware uses joint order
+`[joint1,joint2,joint3,joint4,joint5,joint6]` and the independent operator-set
+Home target `[-90.52991560598026,-7.43359734865227,-62.41522144150158,
+-3.5143370089334374,-37.08400247904573,99.21228312734117]` degrees.
+Left dry-run creates no real Home Action client. On 2026-09-26, the first
+left-only hardware return used four trajectory points and reached the configured
+target within 0.023° on all joints. A second mid-motion Y release produced
+vendor terminal `SUCCEEDED` but adapter `CANCELED`, and the arm stopped before
+Home. Joint 3 advanced another 6.44° after Y release before stabilizing, so
+the physical stopping margin still requires acceptance review. The established
+Quest input dropout issue remains open; this session did not change timeouts.
+
+The versioned `left_hardware.yaml` is the official left hardware config. The
+left launch defaults to `dry_run`; hardware mode with `motion_profile:=normal`
+loads the same four motion values as the right `normal.yaml`:
+`translation_scale=1.0`, `max_velocity_mps=0.20`, `max_step_m=0.00050`, and
+`max_anchor_distance_m=1.0`. The right profile file is unchanged. The left
+hardware workspace is `[-1,-1,0]` to `[1,1,1.5]` m, matching the right
+config. This is an **operator-authorized temporary left hardware test
+workspace**, not yet a final collision/workcell envelope. The 200 ms Quest
+pose/inputs/target, 100 ms robot/joint feedback watchdogs, fault/rearm behavior,
+Grip deadman and physical stop remain active. Left `rm_control` is started
+only for an explicit Home hardware session. Left gripper and X remain unbound;
+Y has only its same-arm Home binding. Only one
+left adapter may publish `movep` and `move_stop` to the single left driver;
+for a Home session `/left/rm_control` alone publishes `movej`, with the left
+driver as its only subscriber, and the adapter alone owns the left Home Action
+client. The adapter publishes stop to both left driver and left `rm_control`.
+
+The Quest target bridge is shared through parameters for hand pose/inputs,
+target pose/marker, `world` frame, and marker namespace. It publishes a
+Quest-world relative target; RM base mapping belongs only in the adapter.
+For the left instance these topics are `/q2r_left_hand_pose`,
+`/q2r_left_hand_inputs`, `/quest_left_target_pose`, and
+`/quest_left_target_marker`.
+
+Operator-confirmed physical axes: Quest world `+X=forward`, `+Y=left`,
+`+Z=up`; left RM65 base `+X=down`, `+Y=back`, `+Z=left`. The mathematically
+derived left mapping is `dx=-Quest_dz`, `dy=-Quest_dx`, `dz=Quest_dy`, with
+`M_left=[[0,0,-1],[-1,0,0],[0,1,0]]`, `M M^T=I`, and `det(M)=+1`.
+Orientation uses the existing world/base-frame convention:
+`DeltaR_Q=R_Q R_Q0^T`, `DeltaR_L=M_left DeltaR_Q M_left^T`, and
+`R_desired=DeltaR_L R_L0`. Real Quest plus real left robot-anchor dry-run
+preview passed the three XYZ signs and a small quaternion comparison on
+2026-09-25; moving-hardware evidence currently covers left +Z and -Y direction
+signs. Quest +Z to left -X and all orientation axes await moving-hardware
+validation. The first `normal` hardware session again confirmed physical-left
+`+Z` motion, but later gestures were unlabeled and cannot complete XYZ or
+orientation acceptance. Physical left
+Grip maps to `press_middle`, index to `press_index`, X to `button_lower`,
+and Y to `button_upper`. X has no left Home, gripper, or motion binding;
+Y is left Home only in explicit hardware mode. Recurring Quest Pose/Inputs dropouts remain
+an open issue; they do not change the watchdog settings for this test session.
+
+### Historical left hardware gates (2026-09-25)
+
+Earlier left-only tests used fresh-P0 narrow workspaces and a temporary
+`left_test` profile. These gates are retired by the official left hardware
+config above. The first moving-hardware test confirmed Quest `+Y` → RM `+Z`
+sign at small displacement. The subsequent ±70 mm XYZ session measured Quest
+`+Y=56.216 mm` → stable robot `+Z=56.074 mm`, then Quest `+X=70.496 mm` →
+stable robot `−Y=66.812 mm`. Test B exceeded the old 70 mm radial anchor cap;
+the adapter latched `FAULT/anchor_distance_violation` before Grip release, and
+the robot moved another 11.429 mm after that stop request. Test C was not run.
+The complete history, trace analysis and stop timing are in
+`docs/progress/left-arm-teleop.md`.
