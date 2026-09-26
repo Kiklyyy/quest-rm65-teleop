@@ -68,8 +68,11 @@ hold their own arm's Home button for 1.5 s with Grip released; speed is
 Left X and gripper remain unbound. Left dry-run still has Home disabled and no
 real Home Action client. The earlier `left_test` profile and local P0 workspaces
 are retired. Quest input gaps remain an open issue, with the existing
-watchdog/stop/rearm behavior unchanged. See `docs/progress/left-arm-teleop.md`
-for moving-hardware validation status.
+watchdog/stop/rearm behavior unchanged. On 2026-09-26, left Y Home reached its
+six-joint target within 0.023° and a separate mid-motion Y release ended with
+adapter `CANCELED` and physical stopping before Home. Joint 3 still traveled
+6.44° after release before stabilizing; the stopping margin remains open for
+review. See `docs/progress/left-arm-teleop.md` for moving-hardware evidence.
 
 ## Motion profiles
 

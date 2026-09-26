@@ -317,8 +317,13 @@ local cancel was already pending. Left hardware uses joint order
 `[joint1,joint2,joint3,joint4,joint5,joint6]` and the independent operator-set
 Home target `[-90.52991560598026,-7.43359734865227,-62.41522144150158,
 -3.5143370089334374,-37.08400247904573,99.21228312734117]` degrees.
-Left dry-run creates no real Home Action client. Real left Home motion and
-cancel validation remain pending until separately observed on hardware.
+Left dry-run creates no real Home Action client. On 2026-09-26, the first
+left-only hardware return used four trajectory points and reached the configured
+target within 0.023° on all joints. A second mid-motion Y release produced
+vendor terminal `SUCCEEDED` but adapter `CANCELED`, and the arm stopped before
+Home. Joint 3 advanced another 6.44° after Y release before stabilizing, so
+the physical stopping margin still requires acceptance review. The established
+Quest input dropout issue remains open; this session did not change timeouts.
 
 The versioned `left_hardware.yaml` is the official left hardware config. The
 left launch defaults to `dry_run`; hardware mode with `motion_profile:=normal`
