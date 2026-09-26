@@ -1,4 +1,4 @@
-"""Left Quest preview or explicitly enabled Cartesian hardware teleop."""
+"""Left Quest preview or explicitly enabled hardware teleop and Home."""
 
 import math
 from pathlib import Path
@@ -84,14 +84,25 @@ def _validate_hardware_config(config_path, package_share):
         if params.get(key) != value:
             raise RuntimeError(f"left hardware endpoint mismatch: {key}")
     for key, value in {"dry_run": False, "hardware_write_enabled": True,
-                       "mapping_verified": True, "home_enabled": False,
+                       "mapping_verified": True, "home_enabled": True,
                        "follow": False}.items():
         if params.get(key) is not value:
             raise RuntimeError(f"left hardware gate mismatch: {key}")
-    if any(key in params for key in
-           ("home_action_name", "home_joint_degrees", "home_joint_names",
-            "home_button_field", "home_hold_seconds", "home_speed_deg_s")):
-        raise RuntimeError("left Home must remain unconfigured")
+    for key, value in {
+        "home_button_field": "upper",
+        "home_hold_seconds": 1.5,
+        "home_speed_deg_s": 15.0,
+        "home_action_name": "/left/rm_group_controller/follow_joint_trajectory",
+        "home_joint_names": [f"joint{i}" for i in range(1, 7)],
+    }.items():
+        if params.get(key) != value:
+            raise RuntimeError(f"left Home config mismatch: {key}")
+    degrees = params.get("home_joint_degrees")
+    if not isinstance(degrees, list) or len(degrees) != 6 or any(
+        isinstance(value, bool) or not isinstance(value, (int, float))
+        or not math.isfinite(value) for value in degrees
+    ):
+        raise RuntimeError("left Home target must have six finite degrees")
     if params.get("mapping") != [0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0]:
         raise RuntimeError("left mapping mismatch")
     for key in SHARED_SAFETY_KEYS:

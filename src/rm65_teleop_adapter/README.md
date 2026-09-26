@@ -1,6 +1,6 @@
 # rm65_teleop_adapter
 
-B-side safety adapter for Quest right-hand 6DoF pose teleoperation to the right RealMan RM65.
+Safety adapter for one Quest hand and its corresponding RealMan RM65 per process.
 
 ## Unified right-arm bringup
 
@@ -41,8 +41,8 @@ The left launch shares the parameterized Quest target bridge and read-only
 monitor. `start_tcp` defaults to `false` to avoid taking a port already owned
 by a live endpoint. Without fresh left robot feedback, the adapter remains
 `DISABLED`; isolated tests provide synthetic feedback only in domain 143.
-The versioned `left_hardware.yaml` enables only left Cartesian hardware
-teleop. The left launch defaults to dry-run; the explicit hardware invocation
+The versioned `left_hardware.yaml` enables left Cartesian teleop and left
+Home. The left launch defaults to dry-run; the explicit hardware invocation
 uses the same four normal motion values as the right arm without changing the
 right profile:
 
@@ -54,11 +54,19 @@ ros2 launch rm65_teleop_adapter left_quest_teleop.launch.py \
 ```
 
 Start exactly one left-only RM driver separately, with namespace remap
-`-r __ns:=/left` and no global `__node` remap. Keep left `rm_control` off.
+`-r __ns:=/left` and no global `__node` remap. Keep left `rm_control` off for
+Cartesian-only sessions. Start one left-only `rm_control` with Action
+`/left/rm_group_controller/follow_joint_trajectory` for an explicit Home
+hardware session, after checking command-path ownership.
 The left hardware workspace matches the right numeric bounds
 `[-1,-1,0]` to `[1,1,1.5]` m for the operator-authorized test; it is not a
-final collision/workcell envelope. Left Home, gripper and X/Y buttons remain
-disabled or unbound. The earlier `left_test` profile and local P0 workspaces
+final collision/workcell envelope. Right physical B and left physical Y each
+hold their own arm's Home button for 1.5 s with Grip released; speed is
+15 deg/s. Left Home target degrees, in joint1–joint6 order, are
+`[-90.52991560598026,-7.43359734865227,-62.41522144150158,
+-3.5143370089334374,-37.08400247904573,99.21228312734117]`.
+Left X and gripper remain unbound. Left dry-run still has Home disabled and no
+real Home Action client. The earlier `left_test` profile and local P0 workspaces
 are retired. Quest input gaps remain an open issue, with the existing
 watchdog/stop/rearm behavior unchanged. See `docs/progress/left-arm-teleop.md`
 for moving-hardware validation status.

@@ -1,6 +1,6 @@
 # Project Status
 
-更新日期：2026-09-25
+更新日期：2026-09-26
 
 ## 当前总体阶段
 
@@ -14,6 +14,7 @@
 ## Left RM65 Quest teleop (+Z and −Y directions observed; XYZ incomplete)
 
 - Branch `feat/left-rm65-teleop` depends on right Home closeout `074e0fa3b7b727fd39c4a2818a22114efe6ec1f3`; `origin/main` did not yet include that work at branch creation.
+- **2026-09-26 left Home implementation checkpoint:** explicit left hardware config now maps physical Y=`button_upper` to the shared Home implementation, with 1.5 s hold, Grip released, 15 deg/s, six-joint target `[-90.52991560598026,-7.43359734865227,-62.41522144150158,-3.5143370089334374,-37.08400247904573,99.21228312734117]` degrees and Action `/left/rm_group_controller/follow_joint_trajectory`. Left dry-run still disables Home and creates no real Action client; right B/Home target and endpoints are unchanged. The left launch strictly validates same-arm endpoints and Home parameters. Adapter-only build, focused Python **16/16** and Home-related CTest **8/8** passed in isolated domain 143 after sourcing RealMan message packages. The first CTest invocation's isolated probe could not import `rm_ros_interfaces` until that environment was sourced; no code change was needed. **Left real Home motion and cancel remain pending**; no Home goal or robot motion occurred in this checkpoint. Quest input dropouts remain open with unchanged timeouts.
 - The right adapter executable/safety state machine now has explicit per-arm node identities, topics and preview/status/service endpoints. Right endpoint and Home configuration remain unchanged. A parameterized Quest target bridge and read-only monitor support a separate left dry-run launch.
 - Operator-confirmed left physical axes yield the mathematically proper matrix `[[0,0,-1],[-1,0,0],[0,1,0]]`; software tests cover XYZ and the existing world-frame orientation convention. Real Quest plus real robot-anchor **dry-run preview** passed all three translation signs. The later real-arm retest validates only the Quest `+Y` → left RM base `+Z` direction sign, with off-axis motion noted below.
 - The left dry-run config remains fail-closed. A separate versioned `left_hardware.yaml` enables hardware write and verified left mapping only in explicit hardware mode; Home remains disabled. The left launch reads the right `normal.yaml` motion values without modifying the right profile: scale 1.0, velocity 0.20 m/s, step 0.00050 m, anchor cap 1.0 m. The old `left_test` entry and dynamic P0 workspace are retired. The operator-authorized temporary hardware test workspace matches the right numeric bounds `[-1,-1,0]` to `[1,1,1.5]` m; it is not a final collision/workcell envelope. The adapter-only build and focused 16/16 config/launch/profile tests passed on isolated domain 143.
