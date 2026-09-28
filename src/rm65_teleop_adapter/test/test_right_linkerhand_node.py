@@ -14,6 +14,7 @@ from rclpy.parameter import Parameter
 from std_msgs.msg import String
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
+import right_linkerhand_node as linkerhand_module
 from right_linkerhand_node import RightLinkerHandNode
 
 CLOSED = [73, 0, 0, 0, 0, 0, 156]
@@ -41,6 +42,52 @@ class FakeHand:
 
     def close(self):
         self.closed = True
+
+
+@pytest.mark.parametrize("context_ok, expected_shutdowns", [(True, 1), (False, 0)])
+def test_main_only_shuts_down_an_active_context(
+        monkeypatch, context_ok, expected_shutdowns):
+    calls = []
+
+    class FakeNode:
+        def destroy_node(self):
+            calls.append("destroy")
+
+    monkeypatch.setattr(linkerhand_module, "RightLinkerHandNode", FakeNode)
+    monkeypatch.setattr(
+        linkerhand_module.rclpy, "init", lambda args=None: calls.append("init"))
+    monkeypatch.setattr(
+        linkerhand_module.rclpy, "spin", lambda node: calls.append("spin"))
+    monkeypatch.setattr(linkerhand_module.rclpy, "ok", lambda: context_ok)
+    monkeypatch.setattr(
+        linkerhand_module.rclpy, "shutdown", lambda: calls.append("shutdown"))
+
+    linkerhand_module.main()
+
+    assert calls[:3] == ["init", "spin", "destroy"]
+    assert calls.count("shutdown") == expected_shutdowns
+
+
+def test_main_handles_keyboard_interrupt(monkeypatch):
+    calls = []
+
+    class FakeNode:
+        def destroy_node(self):
+            calls.append("destroy")
+
+    def interrupted_spin(node):
+        calls.append("spin")
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(linkerhand_module, "RightLinkerHandNode", FakeNode)
+    monkeypatch.setattr(
+        linkerhand_module.rclpy, "init", lambda args=None: calls.append("init"))
+    monkeypatch.setattr(linkerhand_module.rclpy, "spin", interrupted_spin)
+    monkeypatch.setattr(linkerhand_module.rclpy, "ok", lambda: False)
+
+    linkerhand_module.main()
+
+    assert calls == ["init", "spin", "destroy"]
 
 
 @pytest.fixture

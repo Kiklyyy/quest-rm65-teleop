@@ -2,6 +2,45 @@
 
 Safety adapter for one Quest hand and its corresponding RealMan RM65 per process.
 
+## One-command dual-arm bringup
+
+`dual_quest_teleop.launch.py` combines the verified dual RM65 driver launch,
+dual `rm_control` launch, one shared Quest TCP endpoint, both target bridges,
+both teleop adapters, both status monitors, and the optional right O7 hand.
+Dry-run is the safe default and does not start either RM driver or controller:
+
+```bash
+ros2 launch rm65_teleop_adapter dual_quest_teleop.launch.py
+```
+
+Hardware launch with both RM65 drivers/controllers and both Quest adapters:
+
+```bash
+ros2 launch rm65_teleop_adapter dual_quest_teleop.launch.py \
+  mode:=hardware motion_profile:=normal
+```
+
+The parent launch uses `rm_65_dual_driver.launch.py` and
+`rm_65_dual_control.launch.py`, matching the known left `.18:8089` and right
+`.19:8090` configuration. It starts the ROS TCP endpoint only through the
+right child; the left child always receives `start_tcp:=false`. If either RM
+stack is already running, use `start_drivers:=false` and/or
+`start_controls:=false` to avoid duplicate graph owners.
+
+The right O7 tool-RS485 node remains explicit opt-in:
+
+```bash
+ros2 launch rm65_teleop_adapter dual_quest_teleop.launch.py \
+  mode:=hardware motion_profile:=normal start_linkerhand:=true
+```
+
+> **Hardware warning:** right RM driver + O7 API2 coexistence is not yet
+> accepted for routine operation. An onsite A/B test correlated enabling the
+> hand SDK with a first-Grip old-pose jump on the right arm. The unified launch
+> therefore keeps `start_linkerhand:=false` by default. Do not run the final
+> command until the staged coexistence diagnosis has passed with an operator
+> at the stop control.
+
 ## Unified right-arm bringup
 
 The unified launch starts the ROS TCP endpoint, Quest right-target bridge,

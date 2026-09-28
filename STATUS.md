@@ -12,6 +12,28 @@
 单次 Grip anchor 上限。右手灵巧手 Quest 控制的软件版本已加入独立分支，
 SDK 连接、真实反馈和张合方向已由现场操作者人工确认；本版 toggle 和双臂同场集成尚未验证；左臂其余验收、双臂和完整安全验收仍未完成。
 
+## Dual Quest one-command bringup (software checkpoint)
+
+- Branch `feat/dual-quest-bringup` adds `dual_quest_teleop.launch.py` on top of
+  the pushed left-teleop/right-LinkerHand baseline. `/home/lh/robot` is reused
+  read-only and was not modified.
+- Hardware mode reuses the installed verified `rm_65_dual_driver.launch.py`
+  and `rm_65_dual_control.launch.py`, then includes both existing Quest launch
+  files. Exactly one ROS TCP endpoint is enabled (right child owns it; left is
+  forced off). Dry-run starts neither driver nor controller.
+- The dual profile is restricted to `safe|normal`; defaults remain
+  `mode:=dry_run`, `motion_profile:=safe`, and `start_linkerhand:=false`.
+  Existing endpoint identities, safety gates, watchdogs and Home parameters
+  are unchanged.
+- This checkpoint is software-only. No RM driver, `rm_control`, Quest hardware,
+  O7 SDK connection or robot motion was started. The known right RM driver +
+  O7 API2 coexistence/old-pose jump remains open, so automatic O7 startup is
+  intentionally not the default. See `docs/progress/dual-quest-bringup.md`.
+- Four-package build passed; final isolated regression reports 261 tests with
+  zero errors/failures/skips. Dry-run showed both adapters, both target bridges
+  and the O7 dry-run node together, with both real movep topics absent and a
+  clean unified Ctrl-C shutdown.
+
 ## Right LinkerHand L7 Quest trigger toggle (software checkpoint)
 
 - Branch `feat/right-linkerhand-quest` is based on left teleop SHA `57e919fe57818865b179be0d4ac2b57e0714fb9e`; separate left-worktree YAML edits and `/home/lh/robot` were untouched.

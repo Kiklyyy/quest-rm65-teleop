@@ -237,10 +237,13 @@ def main(args=None):
         node = RightLinkerHandNode()
         try:
             rclpy.spin(node)
+        except KeyboardInterrupt:
+            pass
         finally:
             node.destroy_node()
     finally:
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

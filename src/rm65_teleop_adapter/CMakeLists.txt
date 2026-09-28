@@ -116,6 +116,11 @@ if(BUILD_TESTING)
     PYTHON_EXECUTABLE /usr/bin/python3
     ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1)
   ament_add_pytest_test(
+    test_dual_quest_bringup_launch
+    test/test_dual_quest_bringup_launch.py
+    PYTHON_EXECUTABLE /usr/bin/python3
+    ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1)
+  ament_add_pytest_test(
     test_right_linkerhand_transport
     test/test_right_linkerhand_transport.py
     PYTHON_EXECUTABLE /usr/bin/python3

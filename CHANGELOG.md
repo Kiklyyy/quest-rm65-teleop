@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-28 - Dual RM65 + Quest unified bringup
+
+- Added `dual_quest_teleop.launch.py` to compose the installed dual RM65 driver,
+  dual `rm_control`, both existing Quest teleop launches, one TCP endpoint and
+  the optional right O7 node.
+- Dry-run remains the default and does not start RM hardware processes.
+  Hardware mode uses the existing left/right IP, UDP, Action and topic
+  configuration without duplicating it in this package.
+- Limited shared dual-arm profiles to `safe` and `normal`; kept right O7
+  startup explicit and off by default while the API2/driver coexistence jump
+  remains unresolved.
+- Added launch contract tests for defaults, single TCP ownership, verified
+  driver/control launch reuse and invalid hand/profile combinations.
+- Made the optional O7 node exit cleanly under the unified launch Ctrl-C path
+  by handling the expected interrupt and skipping duplicate ROS shutdown.
+
 ## 2026-09-23 - Right-arm Home and stability controls
 
 - Physical A=`button_lower` remains reserved; B=`button_upper` now holds a right-arm joint-space Home. Grip `press_middle` teleop deadman and release-to-press anchor capture are unchanged.

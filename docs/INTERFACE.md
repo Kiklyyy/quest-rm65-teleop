@@ -1,5 +1,43 @@
 # Interface Contract
 
+## 双臂 Quest 一键启动契约
+
+`dual_quest_teleop.launch.py` 是左右 RM65、左右 Quest adapter 和可选右 O7
+灵巧手的统一父 launch。它复用已安装的
+`rm_driver/launch/rm_65_dual_driver.launch.py` 与
+`rm_control/launch/rm_65_dual_control.launch.py`，不复制左右机械臂 IP、UDP
+端口或 Action 参数。硬件模式下形成 `/left/rm_driver`、`/right/rm_driver`、
+`/left/rm_control`、`/right/rm_control` 四个现有身份；子 launch 的
+`start_rm_driver` 固定传入 `false`，禁止重复启动单臂 driver。
+
+统一入口参数：
+
+```text
+mode:=dry_run|hardware                 # 默认 dry_run
+motion_profile:=safe|normal            # 默认 safe；双臂不允许 fast
+start_drivers:=true|false               # 仅 hardware 生效，默认 true
+start_controls:=true|false              # 仅 hardware 生效，默认 true
+start_tcp:=true|false                   # 默认 true；只由右子 launch 启动一次
+start_bridges:=true|false               # 默认 true
+start_status:=true|false                # 默认 true
+start_linkerhand:=true|false            # 默认 false
+linkerhand_connect_only:=true|false      # 默认 false
+use_right_rviz:=true|false              # 默认 false
+use_left_rviz:=true|false               # 默认 false
+```
+
+`mode:=dry_run` 时父 launch 不启动任何 RM driver 或 `rm_control`，两个 adapter
+继续使用各自 dry-run 配置。`mode:=hardware` 且启动开关为 true 时，父 launch
+启动上述双臂 driver/control，然后并行启动左右遥操作链。右子 launch 拥有唯一
+ROS TCP endpoint；左子 launch 始终收到 `start_tcp:=false`。两侧 target bridge、
+adapter、monitor 和 RViz 使用既有独立节点名、topic 与参数。
+
+右 O7 保持显式 opt-in。`start_linkerhand:=true` 才启动 `/right_linkerhand`；
+`linkerhand_connect_only:=true` 还必须同时满足 `mode:=hardware` 和
+`start_linkerhand:=true`。已观察到的“RM driver 与第二 API2/工具 RS485 连接共存时，
+右 Grip 首次可能向旧位姿跳动”问题尚未关闭，因此不得把 O7 自动启动改为默认 true，
+也不得把一键启动的软件验证写成双臂+灵巧手真机验收。
+
 ## 右手 LinkerHand L7 Quest toggle（软件完成，集成真机待测）
 
 独立节点 `/right_linkerhand` 只订阅 `/q2r_right_hand_inputs`
