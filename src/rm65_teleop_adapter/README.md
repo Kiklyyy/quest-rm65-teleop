@@ -315,48 +315,41 @@ velocity limit, 0.05 mm per-step limit, and 3 cm anchor radius. Translation
 mapping, motion profiles, workspace, deadman thresholds, watchdogs and command
 path remain unchanged. Dry-run remains the default launch mode.
 
-## Hold-to-run right Home
+## Hold-to-run right Quest joint presets
 
-Physical A maps to `button_lower` and remains reserved. Physical B maps to
-`button_upper` and selects Home through `home_button_field: upper`. Grip
-`press_middle` remains the teleop deadman with 0.60/0.40 hysteresis. Releasing
-and repressing Grip remains the actual Quest/RM re-anchor gesture.
+The right adapter now maps three Quest face buttons to the three six-joint
+targets stored under its own `hardware.yaml` section:
 
-The operator-confirmed 2026-09-24 right-arm Home target is configured in `hardware.yaml` in degrees:
-`[68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]`, ordered by
-`joint1` through `joint6`. The adapter reorders incoming JointState positions
-by name and rejects missing, duplicate, non-finite, or mismatched samples.
-The four-point trajectory runs from current joints to the configured Home
-through a smoothstep path. Its duration is at least 1.5 times the farthest
-joint angular distance divided by `home_speed_deg_s: 15.0`, with a minimum
-of 0.1 s. This accounts for the peak speed of RealMan's cubic interpolation.
+| Physical button | ROS input | Parameter |
+|---|---|---|
+| X | `/q2r_left_hand_inputs.button_lower` | `quest_right_first` |
+| A | `/q2r_right_hand_inputs.button_lower` | `quest_right_second` |
+| B | `/q2r_right_hand_inputs.button_upper` | `quest_right_last` |
 
-Only `ARMED` with released Grip, fresh/valid inputs and joints, an available
-action server, and an exclusive command/stop path can start Home. B must stay
-pressed for `home_hold_seconds: 1.5` before the one-shot goal is sent to
-`/right/rm_group_controller/follow_joint_trajectory`. `HOMING` never publishes
-Cartesian `movep_canfd_cmd`. B release or watchdog/feedback/path loss requests
-cancel+stop, and `HOMING` persists until the action reaches a terminal result.
-Success or acknowledged cancel enters `REARM_REQUIRED`; B release and normal
-Grip release-to-press are required before Cartesian teleop. Rejection/abort
-enters `FAULT` and sends stop.
+The targets are ordered `joint1` through `joint6` in degrees. The old single
+right B/Home target is superseded by these presets; the independent left Y/Home
+target is unchanged. Grip `press_middle` remains the Cartesian teleop deadman.
 
-`dry_run.yaml` has `home_enabled: false`; it creates no real Home action client.
-The isolated synthetic probe uses `ROS_DOMAIN_ID=143`, localhost-only and
-`/test/home/*` endpoints. Its result was 5 test-only goals, 4 cancels, 1
-success, 0 Cartesian commands, and 0 real command publishers. No RM
-driver or real Home goal was started in that synthetic validation. A separate
-dry-run node graph check found no real Home action client and no real Cartesian
-command publisher. Subsequent operator-confirmed hardware tests validated
-multiple four-point Home returns and a mid-motion B-release physical stop.
-RealMan can return terminal `SUCCEEDED` after stop; when a local cancel was
-pending, the adapter reports `CANCELED`. The final sampled Home action state
-was `CANCELED`, with adapter `ARMED` after B and Grip release. See
-`docs/progress/right-arm-recenter-home.md` for the chronological evidence.
+Each preset reuses the existing guarded `FollowJointTrajectory` path. The
+adapter must be `ARMED`, Grip must be released, both Quest input streams and
+joint feedback must be fresh, and the right driver/control graph must have
+exclusive ownership. Hold exactly one of X/A/B continuously for
+`home_hold_seconds: 1.5`; simultaneous buttons or changing buttons without a
+full release are rejected until all three are released. Releasing the selected
+button during motion requests Action cancel plus repeated stop.
 
-The status JSON adds input ages, joint age/health, Home button/hold/action
-state, and rearm/watchdog counts. The read-only monitor shows `JOINTS` and
-`HOME`; it never participates in control.
+The generated trajectory retains the existing four-point smoothstep and
+`home_speed_deg_s: 15.0` bound. JointState is reordered by name, and missing,
+duplicate, non-finite or mismatched samples block the request. During the
+joint action the adapter publishes no Cartesian `movep_canfd_cmd`. Completion
+or acknowledged cancellation enters `REARM_REQUIRED`, followed by button and
+Grip release before Cartesian teleop can resume.
+
+Status JSON adds `home_inputs_fresh`, `joint_presets_enabled`,
+`joint_preset_selection`, `joint_preset_active`, and X-input age. The isolated
+test graph verifies the exact X/A/B final joint targets, cancel/watchdog paths,
+zero Cartesian commands and zero real command publishers. These three new
+targets have software-only validation; no real RM65 preset motion was started.
 
 ## Build and test
 

@@ -36,6 +36,14 @@ temporary workspace once. Right/left node blocks contain only their endpoints,
 mapping matrix, preview frame and independent Home target/Action. The former
 duplicate `left_hardware.yaml` is removed.
 
+The right hardware block also contains the operator-supplied joint presets:
+X/left `button_lower` selects `quest_right_first`, A/right `button_lower`
+selects `quest_right_second`, and B/right `button_upper` selects
+`quest_right_last`. The adapter reuses its existing guarded four-point right
+joint Action path. A held-at-startup button, multiple buttons, or changing the
+selection without a full release cannot create a goal. The prior single right
+B/Home target is superseded; the left Y/Home target is unchanged.
+
 ## Safety boundary
 
 The optional right O7 node stays off by default. Existing onsite evidence shows
@@ -51,13 +59,17 @@ with the hand node enabled.
   disabled, verified dual RM launch reuse, shared-profile validation and O7
   connect-only gate.
 - Four-package `colcon build --symlink-install` passed. The final isolated
-  regression reports 262 tests, 0 errors, 0 failures and 0 skipped; the new
+  regression reports 266 tests, 0 errors, 0 failures and 0 skipped; the new
   dual-launch contract contributes 7 passing tests.
 - Isolated hardware-mode parameter loading started only the two adapters, with
   driver/control/TCP/bridges/O7 disabled. Both received common
   `control_rate_hz=200.0` and workspace `[-1,-1,0]`; their driver identities,
   mapping matrices and Home Actions remained correctly right/left-specific.
   Both processes exited cleanly, and no real driver or control node was started.
+- Focused tests cover X/A/B mapping, release/conflict latching and the extra
+  Quest input watchdog. The synthetic Action graph reached the exact three
+  configured final joint arrays while retaining zero Cartesian commands and
+  zero real publishers. These targets have no real-robot validation yet.
 - Isolated domain 143 dry-run started both adapters, both Quest target bridges
   and the optional O7 dry-run node. `/left/rm_driver/movep_canfd_cmd` and
   `/right/rm_driver/movep_canfd_cmd` were absent, and all five processes exited

@@ -148,6 +148,7 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
       else if (!input.control_period_valid) cancel_reason = "home_control_period_exceeded";
       else if (!input.quest_pose_fresh) cancel_reason = "home_quest_pose_not_fresh";
       else if (!input.inputs_fresh) cancel_reason = "home_inputs_not_fresh";
+      else if (!input.home_inputs_fresh) cancel_reason = "home_preset_inputs_not_fresh";
       else if (!input.robot_fresh) cancel_reason = "home_robot_not_fresh";
       else if (!input.quest_orientation_valid ||
                input.quest_orientation_status == OrientationSampleStatus::INVALID ||
@@ -228,6 +229,7 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
     } else {
       const bool home_ready = input.home_button_pressed && !home_request_latched_ &&
         input.target_fresh && input.quest_pose_fresh && input.inputs_fresh &&
+        input.home_inputs_fresh &&
         input.robot_fresh && input.joint_state_fresh && input.joint_state_valid &&
         input.home_action_ready && input.home_plan_valid && input.command_path_ready &&
         input.home_command_path_ready &&

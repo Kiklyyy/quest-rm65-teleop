@@ -138,13 +138,20 @@ def test_base_configs_define_exact_orientation_envelope():
 
 def test_home_is_hardware_only_and_uses_confirmed_configuration():
     hardware = load_yaml_parameters(PACKAGE_ROOT / "config" / "hardware.yaml")
+    left_hardware = load_yaml_parameters(
+        PACKAGE_ROOT / "config" / "hardware.yaml", "left_rm65_teleop_adapter")
     dry_run = load_yaml_parameters(PACKAGE_ROOT / "config" / "dry_run.yaml")
     assert dry_run["home_enabled"] is False
     assert hardware["home_enabled"] is True
-    assert hardware["home_button_field"] == "upper"
+    assert left_hardware["home_button_field"] == "upper"
     assert hardware["home_hold_seconds"] == 1.5
     assert hardware["home_speed_deg_s"] == 15.0
-    assert hardware["home_joint_degrees"] == [68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]
+    assert hardware["quest_right_first"] == [
+        92.39, -40.604, 98.498, -2.934, 36.74, 69.0]
+    assert hardware["quest_right_second"] == [
+        92.385, -4.404, 86.974, -2.921, 45.972, -209.053]
+    assert hardware["quest_right_last"] == [
+        95.905, 32.65, 35.463, -2.584, 93.33, -293.409]
     assert hardware["home_joint_names"] == [f"joint{i}" for i in range(1, 7)]
     assert hardware["home_action_name"] == "/right/rm_group_controller/follow_joint_trajectory"
     for profile in ("safe", "normal", "fast"):

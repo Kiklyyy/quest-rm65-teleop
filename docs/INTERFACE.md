@@ -87,12 +87,15 @@ SDK 固定路径为 `/home/lh/quest2ros2_ws/linkerhand/linker_hand_python_sdk`�
 | Topic | 类型 | 当前使用字段 |
 |---|---|---|
 | `/q2r_right_hand_pose` | `geometry_msgs/msg/PoseStamped` | `pose.position.{x,y,z}` 供 bridge 使用；`pose.orientation.{x,y,z,w}` 由 adapter 直接使用 |
-| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `press_middle` teleop deadman; `button_upper` Home; `button_lower` reserved |
+| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `press_middle` teleop deadman; A=`button_lower` selects `quest_right_second`; B=`button_upper` selects `quest_right_last` |
+| `/q2r_left_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | X=`button_lower` selects right-arm `quest_right_first`; the left adapter independently consumes the same message for left teleop/Home |
 
 输入 Pose 的 header、frame 和 stamp 不作为机器人坐标依据。现有
 `quest_right_target_bridge` 仍只处理 position；orientation 不经过该 bridge，而由
 `rm65_teleop_adapter` 直接读取原始 Quest Pose。当前仍不使用摇杆、
-`press_index` is used only by the separate right L7 node when explicitly started; physical A=`button_lower` is reserved without motion authority; physical B=`button_upper` controls Home.
+`press_index` is used only by the separate right L7 node when explicitly started.
+Right X/A/B joint presets have no Cartesian authority and use only the guarded
+right `FollowJointTrajectory` path.
 
 ### 输出
 
@@ -190,7 +193,8 @@ topic 名称均不属于 motion profile。dry-run 始终只加载 `dry_run.yaml`
 |---|---|---|
 | `/quest_right_target_pose` | `geometry_msgs/msg/PoseStamped` | A 侧映射后的虚拟右手目标，只使用相对平移 |
 | `/q2r_right_hand_pose` | `geometry_msgs/msg/PoseStamped` | 独立 Quest Pose 接收 watchdog；`pose.orientation` 是机器人相对姿态控制的直接输入 |
-| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `press_middle` teleop deadman, `button_upper` Home, independent Inputs watchdog |
+| `/q2r_right_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | `press_middle` teleop deadman; A/B select right joint presets; independent Inputs watchdog |
+| `/q2r_left_hand_inputs` | `quest2ros/msg/OVR2ROSInputs` | X selects the first right joint preset; separate freshness watchdog while a right preset is requested |
 | `/right/joint_states` | `sensor_msgs/msg/JointState` | Home joint positions reordered by name, with independent freshness/validity checks |
 | `/right/rm_driver/udp_arm_position` | `geometry_msgs/msg/Pose` | 机器人真实末端 Pose、锚点和反馈 watchdog |
 
@@ -334,15 +338,31 @@ driver 必须以 `/right` namespace 和右臂参数单独启动。启动 driver 
 
 这只证明首次真机运动链路成立；尚不等于旋转、左臂、夹爪、所有断流场景、最终停止余量或完整安全验收已完成。
 
-## Right-arm Home interface (hardware validated)
+## Right-arm X/A/B joint preset interface (software validated; hardware pending)
 
-- Physical A=`button_lower` is reserved. Physical B=`button_upper` is selected by `home_button_field: upper`. Grip remains the `press_middle >=0.60` / `<=0.40` teleop deadman; a new Grip press recaptures Quest/RM anchors.
-- `hardware.yaml` has `home_enabled: true`; `dry_run.yaml` has `home_enabled: false`. A separate dry-run node graph check found no real Home action client. Isolated synthetic testing uses only `/test/home/*` topics/action and starts no RM driver.
-- Operator-confirmed 2026-09-24 right-arm Home target in degrees, ordered `joint1` through `joint6`: `[68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]`. The previous temporary target `[-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]` is retired. `home_hold_seconds: 1.5`; `home_speed_deg_s: 15.0`. Joint target/names, hold, and speed are startup parameters. JointState is reordered by name; missing/duplicate names, length mismatch, NaN, or Inf block Home.
-- Home starts only from `ARMED`, with Grip released, B held continuously for 1.5 s, fresh/valid inputs and joints, an available action server, and an exclusive command/stop path. The hardware Action goal has four synchronized points at fractions 0, 1/3, 2/3, and 1 of a smoothstep path, each with six positions, velocities, accelerations, and `time_from_start`. The first point uses current joint feedback and the last retains the configured Home target. RealMan `rm_control` applies a zero-end-velocity cubic spline to goals with more than three points; duration is at least 1.5 × farthest joint angular distance / `home_speed_deg_s` (minimum 0.1 s), so the ideal spline peak remains at or below 15 deg/s for the default speed.
-- `HOMING` permits only this joint action and emits no `/right/rm_driver/movep_canfd_cmd`. B release, input/joint watchdog, invalid feedback, or exclusive-path/control-period failure requests cancel+stop; `HOMING` persists until the action terminal result. Success or acknowledged cancel -> `REARM_REQUIRED`, followed by B release and Grip release-to-press. Rejection or abort -> `FAULT`.
-- `/right/rm65_teleop/status` retains `state`, `deadman_pressed`, `command_path_ready`, and `reason`; adds `quest_pose_age_ms`, `inputs_age_ms`, `robot_age_ms`, `joint_state_age_ms`, `rearm_count`, `watchdog_count`, `home_button_pressed`, `home_hold_progress`, and `home_action_state`. The read-only monitor displays `JOINTS=OK|LOST` and concise `HOME` state.
-- Complete automated result after new Home target: 206 tests, 0 errors, 0 failures, 0 skipped. Synthetic result: 5 test-action goals, 4 cancels, 1 success, 0 Cartesian hardware commands. Subsequent operator-confirmed real tests validated multiple four-point Home returns from away-from-Home postures (about 5–7 s), physical stop on mid-motion B release, and terminal `home_action_state=CANCELED`. The RealMan controller can report successful completion after a stop; `HomeActionClient` maps that terminal success to `CANCELED` only when a local cancel was already pending. The final sampled adapter state was `ARMED` with Grip and B released, both command paths ready, and no automatic transition to `ACTIVE`. Quest pose and inputs still have occasional simultaneous >200 ms gaps (previous maximum about 343 ms), causing watchdog/rearm; input stability remains open.
+- X is `/q2r_left_hand_inputs.button_lower`, A is
+  `/q2r_right_hand_inputs.button_lower`, and B is
+  `/q2r_right_hand_inputs.button_upper`. They select `quest_right_first`,
+  `quest_right_second`, and `quest_right_last`, respectively. The old single
+  right B/Home target is superseded; left Y/Home is unchanged.
+- All three targets are six joint degrees in `hardware.yaml`, ordered
+  `joint1..joint6`. `home_hold_seconds=1.5`, `home_speed_deg_s=15.0`, joint-name
+  reordering and the right Action
+  `/right/rm_group_controller/follow_joint_trajectory` are shared.
+- A request starts only from `ARMED` with Grip released, both Quest input streams
+  fresh, fresh/valid joints, an available Action server and exclusive right
+  movep/movej/stop ownership. Exactly one button must remain held for 1.5 s.
+  Simultaneous buttons, a held-at-startup button, or switching buttons without
+  a complete release cannot create a goal.
+- The Action goal retains four synchronized smoothstep points. No Cartesian
+  `movep_canfd_cmd` is emitted while the joint action is active. Selected-button
+  release, either Quest input watchdog, joint/pose invalidity, path loss or
+  control-period loss requests cancel plus stop and waits for a terminal result.
+- Status adds `home_inputs_fresh`, `joint_presets_enabled`,
+  `joint_preset_selection`, `joint_preset_active`, and
+  `joint_preset_x_inputs_age_ms`. Isolated Action tests validate the exact X/A/B
+  final joints and existing cancel/watchdog behavior. No real RM65 preset
+  motion has been run for these new targets.
 
 
 ## Shared RM65 adapter endpoint contract (left hardware validation phase)
@@ -381,10 +401,12 @@ fails closed. A dry-run instance creates preview/status only: no `movep`,
 `home_enabled=false`; explicit left hardware mode uses `true` for all three.
 Right Home settings and right safety gates remain unchanged.
 
-The same Home implementation serves both arms through per-arm configuration.
-Right physical B and left physical Y each provide that arm's `button_upper`;
-neither can trigger the other arm. Both require Grip released and a continuous
-1.5 s hold while `ARMED`, then send the existing four-point smoothstep
+The same guarded joint-trajectory implementation serves both arms through
+per-arm configuration. Right X/A/B select right-arm presets; left physical Y
+remains the only left Home button. Right X is read from the left-controller
+message but has no authority over the left adapter. All joint requests require
+Grip released and a continuous 1.5 s hold while `ARMED`, then send the existing
+four-point smoothstep
 `FollowJointTrajectory` at a nominal 15 deg/s joint speed. During `HOMING`,
 Cartesian commands are suppressed. Releasing the Home button requests Action
 cancel plus physical stop; the adapter stays `HOMING` until a terminal result.
@@ -445,8 +467,9 @@ validation. The first `normal` hardware session again confirmed physical-left
 `+Z` motion, but later gestures were unlabeled and cannot complete XYZ or
 orientation acceptance. Physical left
 Grip maps to `press_middle`, index to `press_index`, X to `button_lower`,
-and Y to `button_upper`. X has no left Home, gripper, or motion binding;
-Y is left Home only in explicit hardware mode. Recurring Quest Pose/Inputs dropouts remain
+and Y to `button_upper`. X has no left-arm Home, gripper, or Cartesian binding,
+but the right adapter consumes it for `quest_right_first`; Y is left Home only
+in explicit hardware mode. Recurring Quest Pose/Inputs dropouts remain
 an open issue; they do not change the watchdog settings for this test session.
 
 ### Historical left hardware gates (2026-09-25)

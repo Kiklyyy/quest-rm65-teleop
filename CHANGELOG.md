@@ -19,6 +19,13 @@
   `hardware.yaml`: common gates/watchdogs/limits use a ROS 2 `/**` block, while
   each arm keeps its own endpoints, mapping, frame and Home target. Removed the
   duplicate `left_hardware.yaml` and switched the left launch to the shared file.
+- Added right-arm Quest X/A/B joint presets from `hardware.yaml`: X selects
+  `quest_right_first`, A selects `quest_right_second`, and B selects
+  `quest_right_last`. The presets reuse the existing guarded four-point
+  `FollowJointTrajectory` path, 1.5 s hold, release-to-cancel and rearm rules.
+- Added left-controller X input freshness, startup-release and multi-button
+  conflict latching, preset selection/status fields, exact target tests and an
+  isolated synthetic Action test. No real joint-preset motion was executed.
 
 ## 2026-09-23 - Right-arm Home and stability controls
 

@@ -23,6 +23,7 @@ CycleInput fresh_input()
   input.target_fresh = true;
   input.quest_pose_fresh = true;
   input.inputs_fresh = true;
+  input.home_inputs_fresh = true;
   input.robot_fresh = true;
   input.dt_seconds = 0.01;
   input.quest_orientation = rm65_teleop_adapter::QuaternionXyzw{0.0, 0.0, 0.0, 1.0};

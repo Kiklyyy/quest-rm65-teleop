@@ -54,6 +54,7 @@ CycleInput fresh_input()
   input.target_fresh = true;
   input.quest_pose_fresh = true;
   input.inputs_fresh = true;
+  input.home_inputs_fresh = true;
   input.robot_fresh = true;
   input.dt_seconds = 0.01;
   input.quest_orientation = QuaternionXyzw{0.0, 0.0, 0.0, 1.0};
@@ -714,15 +715,16 @@ TEST(AdapterLogic, ButtonReleaseRequestsCancelAndWaitsForTerminal)
 
 TEST(AdapterLogic, HomeWatchdogLossRequestsCancelAndWaits)
 {
-  for (int source=0; source<5; ++source) {
+  for (int source=0; source<6; ++source) {
     AdapterLogic logic;
     auto input = home_ready_input();
     start_home(logic, input);
     if (source==0) input.quest_pose_fresh = false;
     if (source==1) input.inputs_fresh = false;
-    if (source==2) input.robot_fresh = false;
-    if (source==3) input.joint_state_fresh = false;
-    if (source==4) input.joint_state_valid = false;
+    if (source==2) input.home_inputs_fresh = false;
+    if (source==3) input.robot_fresh = false;
+    if (source==4) input.joint_state_fresh = false;
+    if (source==5) input.joint_state_valid = false;
     const auto out = logic.update(input);
     EXPECT_EQ(out.state, AdapterState::HOMING);
     EXPECT_TRUE(out.home_cancel_requested);

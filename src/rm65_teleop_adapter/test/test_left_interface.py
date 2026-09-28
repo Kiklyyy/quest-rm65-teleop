@@ -38,13 +38,15 @@ def test_right_home_config_and_profile_remain_unchanged():
     normal = params("motion_profiles/normal.yaml", "rm65_teleop_adapter")
     assert right["expected_driver_node"] == "/right/rm_driver"
     assert right["home_enabled"] is True
-    assert right["home_button_field"] == "upper"
     assert right["home_hold_seconds"] == 1.5
     assert right["home_speed_deg_s"] == 15.0
     assert right["home_action_name"] == "/right/rm_group_controller/follow_joint_trajectory"
-    assert right["home_joint_degrees"] == [
-        68.3241063822369, -8.489398369548377, 60.14265142722264,
-        31.52005176840807, 51.634258495569824, -144.10081659391062]
+    assert right["quest_right_x_inputs_topic"] == "/q2r_left_hand_inputs"
+    assert right["quest_right_first"] == [92.39, -40.604, 98.498, -2.934, 36.74, 69.0]
+    assert right["quest_right_second"] == [
+        92.385, -4.404, 86.974, -2.921, 45.972, -209.053]
+    assert right["quest_right_last"] == [
+        95.905, 32.65, 35.463, -2.584, 93.33, -293.409]
     assert normal == {
         "translation_scale": 1.0, "max_velocity_mps": 0.20,
         "max_step_m": 0.00050, "max_anchor_distance_m": 1.0,
@@ -67,7 +69,9 @@ def test_left_hardware_home_is_independent_and_normal_overlay_isolated():
         -90.52991560598026, -7.43359734865227, -62.41522144150158,
         -3.5143370089334374, -37.08400247904573, 99.21228312734117]
     assert left["home_action_name"] == "/left/rm_group_controller/follow_joint_trajectory"
-    assert left["home_joint_degrees"] != right["home_joint_degrees"]
+    assert left["home_joint_degrees"] not in [
+        right["quest_right_first"], right["quest_right_second"],
+        right["quest_right_last"]]
     assert left["home_action_name"] != right["home_action_name"]
     assert left["home_movej_topic"] == "/left/rm_driver/movej_canfd_cmd"
     assert left["stop_topic"] == "/left/rm_driver/move_stop_cmd"
@@ -88,7 +92,19 @@ def test_single_hardware_file_deduplicates_shared_parameters():
     assert not (PACKAGE / "config" / "left_hardware.yaml").exists()
     assert set(common).isdisjoint(right)
     assert set(common).isdisjoint(left)
-    assert set(right) == set(left)
+    common_arm_keys = set(right) & set(left)
+    assert common_arm_keys == {
+        "expected_adapter_node", "expected_driver_node", "expected_control_node",
+        "quest_pose_topic", "inputs_topic", "target_topic", "robot_pose_topic",
+        "joint_state_topic", "command_topic", "home_movej_topic", "stop_topic",
+        "status_topic", "preview_topic", "clear_fault_service", "preview_frame_id",
+        "mapping", "home_action_name",
+    }
+    assert set(right) - set(left) == {
+        "quest_right_x_inputs_topic", "quest_right_first",
+        "quest_right_second", "quest_right_last",
+    }
+    assert set(left) - set(right) == {"home_button_field", "home_joint_degrees"}
     assert common["dry_run"] is False
     assert common["workspace_min"] == [-1, -1, 0]
     assert common["workspace_max"] == [1, 1, 1.5]

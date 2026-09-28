@@ -2,9 +2,11 @@
 #include "rm65_teleop_adapter/home_action_client.hpp"
 #include "rm65_teleop_adapter/home_config.hpp"
 #include "rm65_teleop_adapter/quest_input_deadman.hpp"
+#include "rm65_teleop_adapter/quest_joint_preset.hpp"
 #include "rm65_teleop_adapter/quest_orientation_tracker.hpp"
 
 #include <algorithm>
+#include <array>
 #include <csignal>
 #include <chrono>
 #include <cmath>
@@ -148,8 +150,29 @@ public:
     home_parameters.enabled = home_enabled_;
     home_parameters.button_field = declare_parameter<std::string>("home_button_field", "upper");
     home_parameters.action_name = declare_parameter<std::string>("home_action_name", "");
-    home_parameters.joint_degrees = declare_parameter<std::vector<double>>(
+    const auto configured_home_joint_degrees = declare_parameter<std::vector<double>>(
       "home_joint_degrees", std::vector<double>{});
+    const auto quest_right_first = declare_parameter<std::vector<double>>(
+      "quest_right_first", std::vector<double>{});
+    const auto quest_right_second = declare_parameter<std::vector<double>>(
+      "quest_right_second", std::vector<double>{});
+    const auto quest_right_last = declare_parameter<std::vector<double>>(
+      "quest_right_last", std::vector<double>{});
+    quest_right_x_inputs_topic_ = declare_parameter<std::string>(
+      "quest_right_x_inputs_topic", "");
+    const bool any_joint_preset = !quest_right_first.empty() ||
+      !quest_right_second.empty() || !quest_right_last.empty();
+    joint_presets_enabled_ = quest_right_first.size() == 6 &&
+      quest_right_second.size() == 6 && quest_right_last.size() == 6;
+    if (any_joint_preset && !joint_presets_enabled_) {
+      throw std::invalid_argument(
+              "quest_right_first/second/last must each contain six joint degrees");
+    }
+    if (joint_presets_enabled_ && quest_right_x_inputs_topic_.empty()) {
+      throw std::invalid_argument("Quest X joint preset requires quest_right_x_inputs_topic");
+    }
+    home_parameters.joint_degrees = joint_presets_enabled_ ?
+      quest_right_first : configured_home_joint_degrees;
     home_parameters.joint_names = declare_parameter<std::vector<std::string>>(
       "home_joint_names", std::vector<std::string>{});
     home_parameters.speed_deg_s = declare_parameter<double>("home_speed_deg_s", 0.0);
@@ -163,6 +186,18 @@ public:
       }
       home_config_ = resolve_home_config(home_parameters);
       if (!home_config_) throw std::invalid_argument("invalid enabled Home configuration");
+      if (joint_presets_enabled_) {
+        const std::array<std::vector<double>, 3> configured_presets{
+          quest_right_first, quest_right_second, quest_right_last};
+        for (std::size_t i = 0; i < configured_presets.size(); ++i) {
+          joint_preset_trajectories_[i] = home_config_->trajectory;
+          std::copy(configured_presets[i].begin(), configured_presets[i].end(),
+            joint_preset_trajectories_[i].target_degrees.begin());
+          if (!home_trajectory_config_valid(joint_preset_trajectories_[i])) {
+            throw std::invalid_argument("invalid Quest right joint preset configuration");
+          }
+        }
+      }
     }
 
     AdapterConfig config;
@@ -270,12 +305,24 @@ public:
     inputs_subscription_ = create_subscription<quest2ros::msg::OVR2ROSInputs>(
       inputs_topic, 10, [this](quest2ros::msg::OVR2ROSInputs::SharedPtr message) {
         deadman_pressed_ = input_deadman_.update(*message);
-        if (home_config_) {
+        if (joint_presets_enabled_) {
+          joint_preset_a_pressed_ = static_cast<bool>(message->button_lower);
+          joint_preset_b_pressed_ = static_cast<bool>(message->button_upper);
+        } else if (home_config_) {
           home_button_pressed_ = quest_face_button_pressed(*message, home_config_->button_field);
         }
         inputs_received_ = true;
         inputs_time_ = SteadyClock::now();
       });
+    if (joint_presets_enabled_) {
+      joint_preset_x_subscription_ = create_subscription<quest2ros::msg::OVR2ROSInputs>(
+        quest_right_x_inputs_topic_, 10,
+        [this](quest2ros::msg::OVR2ROSInputs::SharedPtr message) {
+          joint_preset_x_pressed_ = static_cast<bool>(message->button_lower);
+          joint_preset_x_inputs_received_ = true;
+          joint_preset_x_inputs_time_ = SteadyClock::now();
+        });
+    }
     robot_pose_subscription_ = create_subscription<geometry_msgs::msg::Pose>(
       robot_pose_topic, 10, [this](geometry_msgs::msg::Pose::SharedPtr message) {
         robot_received_ = true;
@@ -415,14 +462,30 @@ private:
     const auto paths = command_paths();
     input.command_path_ready = paths.cartesian;
     input.home_command_path_ready = paths.home;
-    input.home_button_pressed = home_button_pressed_;
+    const HomeTrajectoryConfig * selected_home_trajectory = nullptr;
+    if (joint_presets_enabled_) {
+      current_joint_preset_ = joint_preset_selector_.update(
+        inputs_received_ && joint_preset_x_inputs_received_,
+        joint_preset_x_pressed_, joint_preset_a_pressed_, joint_preset_b_pressed_);
+      const auto preset_index = quest_joint_preset_index(current_joint_preset_);
+      if (preset_index) {
+        selected_home_trajectory = &joint_preset_trajectories_[*preset_index];
+      }
+      input.home_button_pressed = preset_index.has_value();
+      input.home_inputs_fresh = input.inputs_fresh && is_fresh(
+        joint_preset_x_inputs_received_, joint_preset_x_inputs_time_, inputs_timeout_);
+    } else {
+      input.home_button_pressed = home_button_pressed_;
+      input.home_inputs_fresh = input.inputs_fresh;
+      if (home_config_) selected_home_trajectory = &home_config_->trajectory;
+    }
     input.joint_state_fresh = home_enabled_ &&
       is_fresh(joint_state_received_, joint_state_time_, joint_state_timeout_);
     input.joint_state_valid = joint_state_valid_;
     input.home_action_ready = home_client_ && home_client_->server_ready() &&
       (logic_->state() == AdapterState::HOMING || !home_client_->goal_active());
-    input.home_plan_valid = home_config_ && joint_state_valid_ &&
-      make_home_trajectory_plan(joint_positions_, home_config_->trajectory).has_value();
+    input.home_plan_valid = selected_home_trajectory && joint_state_valid_ &&
+      make_home_trajectory_plan(joint_positions_, *selected_home_trajectory).has_value();
     if (!home_events_.empty()) {
       input.home_action_event = home_events_.front();
       last_home_event_ = input.home_action_event;
@@ -456,9 +519,13 @@ private:
     if (output.home_goal_requested) {
       last_home_event_ = HomeActionEvent::NONE;
       home_cancel_pending_ = false;
-      const auto plan = home_config_ ?
-        make_home_trajectory_plan(joint_positions_, home_config_->trajectory) :
+      active_joint_preset_ = current_joint_preset_;
+      const auto plan = selected_home_trajectory ?
+        make_home_trajectory_plan(joint_positions_, *selected_home_trajectory) :
         std::optional<HomeTrajectoryPlan>{};
+      RCLCPP_INFO(
+        get_logger(), "joint trajectory requested: %s",
+        joint_presets_enabled_ ? quest_joint_preset_name(active_joint_preset_) : "HOME");
       if (!home_client_ || !plan || !home_client_->send_goal(*plan)) {
         home_events_.push_back(HomeActionEvent::REJECTED);
         publish_stop();
@@ -537,15 +604,23 @@ private:
            << ",\"target_fresh\":" << input.target_fresh
            << ",\"quest_pose_fresh\":" << input.quest_pose_fresh
            << ",\"inputs_fresh\":" << input.inputs_fresh
+           << ",\"home_inputs_fresh\":" << input.home_inputs_fresh
            << ",\"robot_fresh\":" << input.robot_fresh
            << ",\"joint_state_fresh\":" << input.joint_state_fresh
            << ",\"quest_pose_age_ms\":" << age_ms(quest_pose_received_, quest_pose_time_)
            << ",\"inputs_age_ms\":" << age_ms(inputs_received_, inputs_time_)
+           << ",\"joint_preset_x_inputs_age_ms\":" << age_ms(
+      joint_preset_x_inputs_received_, joint_preset_x_inputs_time_)
            << ",\"robot_age_ms\":" << age_ms(robot_received_, robot_time_)
            << ",\"joint_state_age_ms\":" << age_ms(joint_state_received_, joint_state_time_)
            << ",\"rearm_count\":" << rearm_count_
            << ",\"watchdog_count\":" << watchdog_count_
            << ",\"home_button_pressed\":" << input.home_button_pressed
+           << ",\"joint_presets_enabled\":" << joint_presets_enabled_
+           << ",\"joint_preset_selection\":\"" << quest_joint_preset_name(
+      current_joint_preset_) << "\""
+           << ",\"joint_preset_active\":\"" << quest_joint_preset_name(
+      active_joint_preset_) << "\""
            << ",\"home_hold_progress\":" << output.home_hold_progress
            << ",\"home_action_state\":\"" << home_action_state << "\""
            << ",\"command_path_ready\":" << input.command_path_ready
@@ -559,12 +634,19 @@ private:
 
   bool dry_run_{true}, hardware_write_enabled_{false}, mapping_verified_{false};
   bool home_enabled_{false}, home_button_pressed_{false};
+  bool joint_presets_enabled_{false};
+  bool joint_preset_x_pressed_{false}, joint_preset_a_pressed_{false};
+  bool joint_preset_b_pressed_{false}, joint_preset_x_inputs_received_{false};
   bool joint_state_received_{false}, joint_state_valid_{false};
   double joint_state_timeout_{0.10};
   std::string joint_state_topic_;
   std::array<double, 6> joint_positions_{};
   SteadyClock::time_point joint_state_time_{};
   std::optional<ResolvedHomeConfig> home_config_;
+  std::array<HomeTrajectoryConfig, 3> joint_preset_trajectories_{};
+  QuestJointPresetSelector joint_preset_selector_;
+  QuestJointPreset current_joint_preset_{QuestJointPreset::NONE};
+  QuestJointPreset active_joint_preset_{QuestJointPreset::NONE};
   std::unique_ptr<HomeActionClient> home_client_;
   std::deque<HomeActionEvent> home_events_;
   HomeActionEvent last_home_event_{HomeActionEvent::NONE};
@@ -579,11 +661,13 @@ private:
   double target_timeout_{0.20}, quest_pose_timeout_{0.20}, inputs_timeout_{0.20};
   double robot_timeout_{0.10}, max_control_period_{0.010}, max_cycle_period_seen_{0.0};
   std::string preview_frame_id_, command_topic_, home_movej_topic_, stop_topic_;
+  std::string quest_right_x_inputs_topic_;
   std::string expected_controller_node_name_;
   Endpoint expected_adapter_, expected_driver_, expected_controller_;
   geometry_msgs::msg::PoseStamped target_pose_;
   Pose3 robot_pose_;
   SteadyClock::time_point target_time_{}, quest_pose_time_{}, inputs_time_{}, robot_time_{};
+  SteadyClock::time_point joint_preset_x_inputs_time_{};
   SteadyClock::time_point last_cycle_time_{}, last_status_time_{};
   std::unique_ptr<AdapterLogic> logic_;
   QuestInputDeadman input_deadman_;
@@ -595,6 +679,7 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr target_subscription_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr quest_pose_subscription_;
   rclcpp::Subscription<quest2ros::msg::OVR2ROSInputs>::SharedPtr inputs_subscription_;
+  rclcpp::Subscription<quest2ros::msg::OVR2ROSInputs>::SharedPtr joint_preset_x_subscription_;
   rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr robot_pose_subscription_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_state_subscription_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr clear_fault_service_;

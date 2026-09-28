@@ -32,7 +32,9 @@ PREFIX = "/test/home"
 class SyntheticHome(Node):
     def __init__(self):
         super().__init__("rm_driver", namespace="/right")
-        self.button = False
+        self.button_x = False
+        self.button_a = False
+        self.button_b = False
         self.grip = 0.0
         self.publish_quest = True
         self.invalid_joints = False
@@ -48,6 +50,8 @@ class SyntheticHome(Node):
         self.poses = self.create_publisher(PoseStamped, PREFIX + "/quest_pose", 10)
         self.targets = self.create_publisher(PoseStamped, PREFIX + "/target", 10)
         self.inputs = self.create_publisher(OVR2ROSInputs, PREFIX + "/inputs", 10)
+        self.x_inputs = self.create_publisher(
+            OVR2ROSInputs, PREFIX + "/x_inputs", 10)
         self.robot = self.create_publisher(Pose, PREFIX + "/robot_pose", 10)
         self.joints = self.create_publisher(JointState, PREFIX + "/joints", 10)
         self.command_sub = self.create_subscription(
@@ -105,10 +109,13 @@ class SyntheticHome(Node):
         target.pose.orientation.w = 1.0
         self.targets.publish(target)
         inputs = OVR2ROSInputs()
-        inputs.button_upper = self.button
-        inputs.button_lower = True  # A has no Home authority.
+        inputs.button_upper = self.button_b
+        inputs.button_lower = self.button_a
         inputs.press_middle = self.grip
         self.inputs.publish(inputs)
+        x_inputs = OVR2ROSInputs()
+        x_inputs.button_lower = self.button_x
+        self.x_inputs.publish(x_inputs)
         robot = Pose()
         robot.position.x = 0.4
         robot.position.z = 0.5
@@ -167,6 +174,7 @@ def test_home_synthetic_probe():
                 "target_topic": PREFIX + "/target",
                 "quest_pose_topic": PREFIX + "/quest_pose",
                 "inputs_topic": PREFIX + "/inputs",
+                "quest_right_x_inputs_topic": PREFIX + "/x_inputs",
                 "robot_pose_topic": PREFIX + "/robot_pose",
                 "joint_state_topic": PREFIX + "/joints",
                 "command_topic": PREFIX + "/movep_cmd",
@@ -199,8 +207,40 @@ def test_home_synthetic_probe():
                     assert initial_status["home_action_state"] in ("IDLE", "SERVER_UNAVAILABLE")
                     assert node.count_publishers("/right/rm_driver/movep_canfd_cmd") == 0
 
+                    def verify_successful_preset(button_attr, label, expected_degrees):
+                        setattr(node, button_attr, True)
+                        expected_count = len(node.goals) + 1
+                        wait_for(lambda: len(node.goals) == expected_count,
+                                 f"{label} preset goal", 3)
+                        wait_for(lambda: node.latest_state() == "HOMING",
+                                 f"{label} preset HOMING")
+                        wait_for(
+                            lambda: node.statuses[-1][1].get(
+                                "joint_preset_selection") == label,
+                            f"{label} preset status")
+                        final_positions = node.goals[-1].trajectory.points[-1].positions
+                        for actual, degrees in zip(final_positions, expected_degrees):
+                            assert math.isclose(actual, math.radians(degrees), abs_tol=1e-9)
+                        state_start = len(node.statuses)
+                        node.terminal_gate.set()
+                        wait_for(lambda: saw_state(node, "REARM_REQUIRED", state_start),
+                                 f"{label} preset success")
+                        setattr(node, button_attr, False)
+                        wait_for(lambda: node.latest_state() == "ARMED",
+                                 f"{label} preset release rearm")
+
+                    verify_successful_preset(
+                        "button_x", "X_FIRST",
+                        [92.39, -40.604, 98.498, -2.934, 36.74, 69.0])
+                    verify_successful_preset(
+                        "button_a", "A_SECOND",
+                        [92.385, -4.404, 86.974, -2.921, 45.972, -209.053])
+                    node.goals.clear()
+                    node.cancel_count = 0
+                    node.stop_count = 0
+
                     # A short B hold cannot create a goal.
-                    node.button = True
+                    node.button_b = True
                     time.sleep(0.7)
                     assert len(node.goals) == 0
                     wait_for(lambda: len(node.goals) == 1, "first Home goal", 3)
@@ -209,7 +249,8 @@ def test_home_synthetic_probe():
                     assert first_goal.trajectory.joint_names == [f"joint{i}" for i in range(1, 7)]
                     points = first_goal.trajectory.points
                     assert len(points) == 4  # RealMan requires its >3-point spline branch.
-                    expected_degrees = [68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]
+                    expected_degrees = [
+                        95.905, 32.65, 35.463, -2.584, 93.33, -293.409]
                     current_radians = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
                     assert all(math.isclose(a, c, abs_tol=1e-9)
                                for a, c in zip(points[0].positions, current_radians))
@@ -239,7 +280,7 @@ def test_home_synthetic_probe():
                     # Cancel is requested immediately; the action result is deliberately held back.
                     state_start = len(node.statuses)
                     stop_before = node.stop_count
-                    node.button = False
+                    node.button_b = False
                     wait_for(lambda: node.cancel_count == 1, "first cancel request")
                     wait_for(lambda: node.stop_count > stop_before, "button-release stop")
                     time.sleep(0.3)
@@ -253,7 +294,7 @@ def test_home_synthetic_probe():
                     # Release Grip and B, then re-hold B for a successful Home.
                     node.grip = 0.0
                     wait_for(lambda: node.latest_state() == "ARMED", "rearm after cancel")
-                    node.button = True
+                    node.button_b = True
                     wait_for(lambda: len(node.goals) == 2, "second Home goal", 3)
                     node.grip = 1.0
                     state_start = len(node.statuses)
@@ -265,10 +306,10 @@ def test_home_synthetic_probe():
                     assert node.command_count == 0
 
                     # A fresh B release and hold starts Home again; Quest loss cancels it.
-                    node.button = False
+                    node.button_b = False
                     node.grip = 0.0
                     wait_for(lambda: node.latest_state() == "ARMED", "second rearm")
-                    node.button = True
+                    node.button_b = True
                     wait_for(lambda: len(node.goals) == 3, "third Home goal", 3)
                     node.grip = 1.0
                     stop_before = node.stop_count
@@ -289,10 +330,10 @@ def test_home_synthetic_probe():
                     assert node.count_publishers("/right/rm_driver/movep_canfd_cmd") == 0
 
                     # Invalid shuffled joint feedback is distinct from a stale stream.
-                    node.button = False
+                    node.button_b = False
                     node.grip = 0.0
                     wait_for(lambda: node.latest_state() == "ARMED", "third rearm")
-                    node.button = True
+                    node.button_b = True
                     wait_for(lambda: len(node.goals) == 4, "invalid-joint Home goal", 3)
                     node.grip = 1.0
                     node.invalid_joints = True
@@ -304,12 +345,12 @@ def test_home_synthetic_probe():
                     wait_for(lambda: saw_state(node, "REARM_REQUIRED", state_start),
                              "invalid-joint terminal rearm")
                     node.invalid_joints = False
-                    node.button = False
+                    node.button_b = False
                     node.grip = 0.0
                     wait_for(lambda: node.latest_state() == "ARMED", "fourth rearm")
 
                     # Process shutdown during Home must request cancel and stop.
-                    node.button = True
+                    node.button_b = True
                     wait_for(lambda: len(node.goals) == 5, "shutdown Home goal", 3)
                     stop_before = node.stop_count
                     process.send_signal(signal.SIGINT)
@@ -388,6 +429,7 @@ def test_command_path_ownership_probe():
                     "target_topic": PREFIX + "/target",
                     "quest_pose_topic": PREFIX + "/quest_pose",
                     "inputs_topic": PREFIX + "/inputs",
+                    "quest_right_x_inputs_topic": PREFIX + "/x_inputs",
                     "robot_pose_topic": PREFIX + "/robot_pose",
                     "joint_state_topic": PREFIX + "/joints",
                     "command_topic": PREFIX + "/movep_cmd",

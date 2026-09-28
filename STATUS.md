@@ -29,17 +29,27 @@ SDK 连接、真实反馈和张合方向已由现场操作者人工确认；本�
   block defines identical safety/timing values once, while the right and left
   node blocks retain independent endpoints, mappings, frames and Home targets.
   The duplicate `left_hardware.yaml` has been removed.
+- The right block now defines three six-joint Quest presets: X from left
+  `button_lower` -> `quest_right_first`, A from right `button_lower` ->
+  `quest_right_second`, and B from right `button_upper` -> `quest_right_last`.
+  They reuse the existing right FollowJointTrajectory safety path, require a
+  single 1.5 s hold with Grip released, and cancel+stop on selected-button
+  release or watchdog/path failure. The prior single right B/Home target is
+  superseded; left Y/Home is unchanged.
 - This checkpoint is software-only. No RM driver, `rm_control`, Quest hardware,
   O7 SDK connection or robot motion was started. The known right RM driver +
   O7 API2 coexistence/old-pose jump remains open, so automatic O7 startup is
   intentionally not the default. See `docs/progress/dual-quest-bringup.md`.
-- Four-package build passed; final isolated regression reports 262 tests with
+- Four-package build passed; final isolated regression reports 266 tests with
   zero errors/failures/skips. Dry-run showed both adapters, both target bridges
   and the O7 dry-run node together, with both real movep topics absent and a
   clean unified Ctrl-C shutdown.
 - Isolated hardware-mode config loading, with all external processes disabled,
   confirmed that both adapters receive the shared 200 Hz/workspace values and
   retain separate `/left`/`/right` driver identities, mappings and Home Actions.
+- X/A/B target selection and exact final joint degrees pass isolated Action
+  testing with no real driver, controller or robot motion. New preset hardware
+  behavior remains pending operator-supervised validation.
 
 ## Right LinkerHand L7 Quest trigger toggle (software checkpoint)
 
@@ -76,7 +86,7 @@ SDK 连接、真实反馈和张合方向已由现场操作者人工确认；本�
 - A separately authorized same-session XYZ attempt increased only test-only `left_test` to scale `1.0`, velocity `0.03 m/s`, step `0.00015 m`, radial anchor cap `0.070 m`, with a fresh-P0 ±70 mm local cube. Right profiles, Home-disabled state, and watchdogs were unchanged; adapter build, focused Python **18/18**, and related CTest **4/4** passed. Five seconds of static feedback showed `(dX,dY,dZ)=(0.000,0.000,+0.006)` mm median drift, with no clear +X/down sag. Left-only graph ownership remained unique. Test A Quest left `+Y=56.216 mm` produced preview `+Z=56.049 mm` and stable real `+Z=56.074 mm`; ACTIVE Grip release stopped the arm with **1.103 mm** release-to-stable TCP change. Test B Quest forward `+X=70.496 mm` produced preview `−Y=67.888 mm` and stable real `−Y=66.812 mm`, but exceeded the 70 mm radial anchor cap and latched `FAULT/anchor_distance_violation` before Grip release. The robot changed another **11.429 mm** after the fault stop request, a material stopping-margin finding. No watchdog increment occurred during either ACTIVE segment. **Test C (Quest up → base −X) was not run**: FAULT remained latched and final Y was close to the session cube boundary. The operator confirmed both arms stationary, buttons released, no emergency stop; all exact session processes and port 10000 were stopped. Thus +Z and −Y direction signs have hardware evidence, while **complete XYZ hardware validation remains pending**. Full data and cross-axis analysis are in `docs/progress/left-arm-teleop.md`.
 - Four-package build and final automated regression passed: `colcon test-result --all` reported 220 tests, 0 errors, 0 failures, 0 skipped (includes 14 CTest wrapper records). Quest/TCP simultaneous input gaps remain open.
 
-## Right RM65 Home + stability branch (hardware validated; input stability open)
+## Historical right RM65 B/Home branch (superseded by X/A/B presets)
 
 - Branch `feat/recenter-home` locks physical A=`button_lower` (reserved) and B=`button_upper` (Home). Grip `press_middle` remains the 0.60/0.40 teleop deadman.
 - Hardware Home configuration: J1..J6 names `joint1` through `joint6`, operator-confirmed 2026-09-24 target degrees `[68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]`, hold 1.5 s, nominal maximum average joint speed 15 deg/s, action `/right/rm_group_controller/follow_joint_trajectory`. The old temporary target `[-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]` is retired.

@@ -5,7 +5,6 @@
     dry_run: false
     hardware_write_enabled: true
     mapping_verified: true
-    home_button_field: upper
     home_enabled: true
     home_hold_seconds: 1.5
     home_speed_deg_s: 15.0
@@ -53,8 +52,12 @@ rm65_teleop_adapter:
     clear_fault_service: /right/rm65_teleop/clear_fault
     preview_frame_id: right_rm65_base
     mapping: [0.0, 0.0, 1.0, -1.0, 0.0, 0.0, 0.0, -1.0, 0.0]
-    home_joint_degrees: [68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]
     home_action_name: /right/rm_group_controller/follow_joint_trajectory
+    # Quest X is left-hand button_lower; A/B are right-hand lower/upper.
+    quest_right_x_inputs_topic: /q2r_left_hand_inputs
+    quest_right_first: [92.39, -40.604, 98.498, -2.934, 36.74, 69.0]
+    quest_right_second: [92.385, -4.404, 86.974, -2.921, 45.972, -209.053]
+    quest_right_last: [95.905, 32.65, 35.463, -2.584, 93.33, -293.409]
 
 # Left RM65 endpoints, mapping, frame and independently confirmed Home target.
 left_rm65_teleop_adapter:
@@ -75,5 +78,6 @@ left_rm65_teleop_adapter:
     clear_fault_service: /left/rm65_teleop/clear_fault
     preview_frame_id: left_rm65_base
     mapping: [0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+    home_button_field: upper
     home_joint_degrees: [-90.52991560598026, -7.43359734865227, -62.41522144150158, -3.5143370089334374, -37.08400247904573, 99.21228312734117]
     home_action_name: /left/rm_group_controller/follow_joint_trajectory

@@ -57,6 +57,7 @@ struct CycleInput
   bool target_fresh{false};
   bool quest_pose_fresh{false};
   bool inputs_fresh{false};
+  bool home_inputs_fresh{false};
   bool robot_fresh{false};
   bool control_period_valid{true};
   bool command_path_ready{true};
