@@ -72,14 +72,17 @@ def _validate_arguments(context):
 
 def _read_params(path, node):
     try:
-        return yaml.safe_load(path.read_text(encoding="utf-8"))[node]["ros__parameters"]
-    except (OSError, KeyError, TypeError, ValueError, yaml.YAMLError) as exc:
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        common = document.get("/**", {}).get("ros__parameters", {})
+        specific = document[node]["ros__parameters"]
+        return {**common, **specific}
+    except (OSError, AttributeError, KeyError, TypeError, ValueError, yaml.YAMLError) as exc:
         raise RuntimeError(f"invalid parameter file: {path}") from exc
 
 
 def _validate_hardware_config(config_path, package_share):
     params = _read_params(config_path, "left_rm65_teleop_adapter")
-    right = _read_params(Path(package_share) / "config" / "hardware.yaml", "rm65_teleop_adapter")
+    right = _read_params(config_path, "rm65_teleop_adapter")
     for key, value in LEFT_HARDWARE_ENDPOINTS.items():
         if params.get(key) != value:
             raise RuntimeError(f"left hardware endpoint mismatch: {key}")
@@ -131,7 +134,7 @@ def _adapter_parameter_files(context, package_share):
     _validate_arguments(context)
     if LaunchConfiguration("mode").perform(context) == "dry_run":
         return [str(Path(package_share) / "config" / "left_dry_run.yaml")]
-    config_path = Path(package_share) / "config" / "left_hardware.yaml"
+    config_path = Path(package_share) / "config" / "hardware.yaml"
     profile = LaunchConfiguration("motion_profile").perform(context)
     _validate_hardware_config(config_path, package_share)
     if profile == "safe":

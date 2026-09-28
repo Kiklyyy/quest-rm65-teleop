@@ -15,6 +15,10 @@
   driver/control launch reuse and invalid hand/profile combinations.
 - Made the optional O7 node exit cleanly under the unified launch Ctrl-C path
   by handling the expected interrupt and skipping duplicate ROS shutdown.
+- Consolidated right and left hardware adapter parameters into one
+  `hardware.yaml`: common gates/watchdogs/limits use a ROS 2 `/**` block, while
+  each arm keeps its own endpoints, mapping, frame and Home target. Removed the
+  duplicate `left_hardware.yaml` and switched the left launch to the shared file.
 
 ## 2026-09-23 - Right-arm Home and stability controls
 

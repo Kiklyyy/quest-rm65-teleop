@@ -403,9 +403,13 @@ Home. Joint 3 advanced another 6.44° after Y release before stabilizing, so
 the physical stopping margin still requires acceptance review. The established
 Quest input dropout issue remains open; this session did not change timeouts.
 
-The versioned `left_hardware.yaml` is the official left hardware config. The
-left launch defaults to `dry_run`; hardware mode with `motion_profile:=normal`
-loads the same four motion values as the right `normal.yaml`:
+The versioned `hardware.yaml` is the single official hardware config for both
+adapter nodes. Its `/**` block defines the identical gates, watchdogs, timing,
+limits and workspace once. The `rm65_teleop_adapter` and
+`left_rm65_teleop_adapter` blocks contain only their separate node/topic
+identities, mappings, frames and Home targets. The left launch defaults to
+`dry_run`; hardware mode with `motion_profile:=normal` loads the same four
+motion values as the right `normal.yaml`:
 `translation_scale=1.0`, `max_velocity_mps=0.20`, `max_step_m=0.00050`, and
 `max_anchor_distance_m=1.0`. The right profile file is unchanged. The left
 hardware workspace is `[-1,-1,0]` to `[1,1,1.5]` m, matching the right

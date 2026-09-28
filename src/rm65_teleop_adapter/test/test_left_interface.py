@@ -13,7 +13,8 @@ PACKAGE = Path(__file__).parents[1]
 
 def params(name, node):
     document = yaml.safe_load((PACKAGE / "config" / name).read_text(encoding="utf-8"))
-    return document[node]["ros__parameters"]
+    common = document.get("/**", {}).get("ros__parameters", {})
+    return {**common, **document[node]["ros__parameters"]}
 
 
 def left_launch_module():
@@ -52,7 +53,7 @@ def test_right_home_config_and_profile_remain_unchanged():
 
 def test_left_hardware_home_is_independent_and_normal_overlay_isolated():
     module = left_launch_module()
-    left = params("left_hardware.yaml", "left_rm65_teleop_adapter")
+    left = params("hardware.yaml", "left_rm65_teleop_adapter")
     right = params("hardware.yaml", "rm65_teleop_adapter")
     assert left["expected_driver_node"] == "/left/rm_driver"
     assert left["expected_adapter_node"] == "/left_rm65_teleop_adapter"
@@ -73,8 +74,24 @@ def test_left_hardware_home_is_independent_and_normal_overlay_isolated():
     assert left["workspace_min"] == [-1, -1, 0]
     assert left["workspace_max"] == [1, 1, 1.5]
     files = module._adapter_parameter_files(context_for("hardware", "normal"), PACKAGE)
-    assert files == [str(PACKAGE / "config" / "left_hardware.yaml"),
+    assert files == [str(PACKAGE / "config" / "hardware.yaml"),
                      params("motion_profiles/normal.yaml", "rm65_teleop_adapter")]
+
+
+def test_single_hardware_file_deduplicates_shared_parameters():
+    config_path = PACKAGE / "config" / "hardware.yaml"
+    document = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    common = document["/**"]["ros__parameters"]
+    right = document["rm65_teleop_adapter"]["ros__parameters"]
+    left = document["left_rm65_teleop_adapter"]["ros__parameters"]
+
+    assert not (PACKAGE / "config" / "left_hardware.yaml").exists()
+    assert set(common).isdisjoint(right)
+    assert set(common).isdisjoint(left)
+    assert set(right) == set(left)
+    assert common["dry_run"] is False
+    assert common["workspace_min"] == [-1, -1, 0]
+    assert common["workspace_max"] == [1, 1, 1.5]
 
 
 def test_dry_run_remains_default_and_left_test_is_retired():
@@ -96,12 +113,12 @@ def test_left_hardware_rejects_wrong_owner_or_weakened_safety(tmp_path):
     for name in ("hardware.yaml", "motion_profiles/safe.yaml"):
         source = PACKAGE / "config" / name
         (tmp_path / "config" / name).write_bytes(source.read_bytes())
-    left = params("left_hardware.yaml", "left_rm65_teleop_adapter")
-    left_path = tmp_path / "config" / "left_hardware.yaml"
+    left_path = tmp_path / "config" / "hardware.yaml"
+    document = yaml.safe_load(left_path.read_text(encoding="utf-8"))
+    left = document["left_rm65_teleop_adapter"]["ros__parameters"]
 
     def write():
-        left_path.write_text(yaml.safe_dump({"left_rm65_teleop_adapter": {
-            "ros__parameters": left}}), encoding="utf-8")
+        left_path.write_text(yaml.safe_dump(document), encoding="utf-8")
 
     left["expected_driver_node"] = "/right/rm_driver"
     write()
@@ -112,7 +129,7 @@ def test_left_hardware_rejects_wrong_owner_or_weakened_safety(tmp_path):
     write()
     with pytest.raises(RuntimeError, match="safety mismatch: inputs_timeout"):
         module._validate_hardware_config(left_path, tmp_path)
-    left["inputs_timeout"] = 0.20
+    del left["inputs_timeout"]
     left["home_action_name"] = "/right/rm_group_controller/follow_joint_trajectory"
     write()
     with pytest.raises(RuntimeError, match="Home config mismatch: home_action_name"):

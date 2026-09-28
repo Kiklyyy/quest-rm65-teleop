@@ -115,10 +115,11 @@ def test_profile_contains_only_allowed_motion_parameters(profile):
     assert parameters == EXPECTED_PROFILES[profile]
 
 
-def load_yaml_parameters(path: Path):
+def load_yaml_parameters(path: Path, node="rm65_teleop_adapter"):
     with path.open(encoding="utf-8") as stream:
         document = yaml.safe_load(stream)
-    return document["rm65_teleop_adapter"]["ros__parameters"]
+    common = document.get("/**", {}).get("ros__parameters", {})
+    return {**common, **document[node]["ros__parameters"]}
 
 
 def test_base_configs_define_exact_orientation_envelope():

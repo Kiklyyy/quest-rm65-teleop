@@ -80,10 +80,12 @@ The left launch shares the parameterized Quest target bridge and read-only
 monitor. `start_tcp` defaults to `false` to avoid taking a port already owned
 by a live endpoint. Without fresh left robot feedback, the adapter remains
 `DISABLED`; isolated tests provide synthetic feedback only in domain 143.
-The versioned `left_hardware.yaml` enables left Cartesian teleop and left
-Home. The left launch defaults to dry-run; the explicit hardware invocation
-uses the same four normal motion values as the right arm without changing the
-right profile:
+The single versioned `hardware.yaml` contains a ROS 2 `/**` common block plus
+separate `rm65_teleop_adapter` and `left_rm65_teleop_adapter` blocks. Common
+hardware gates, watchdogs, timing, limits and workspace are defined once;
+endpoints, mappings, frames and Home targets remain arm-specific. The left
+launch defaults to dry-run; the explicit hardware invocation uses the same
+four normal motion values as the right arm without changing the right profile:
 
 ```bash
 export ROS_DOMAIN_ID=42

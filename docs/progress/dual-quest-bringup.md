@@ -30,6 +30,12 @@ processes. Hardware mode starts both dual RM launch files unless explicitly
 disabled. `safe` and `normal` are the only shared profiles because left
 hardware rejects the unvalidated right-only `fast` profile.
 
+Both adapter processes now use `config/hardware.yaml`. A ROS 2 `/**` block
+stores common hardware gates, watchdogs, timing, motion safety limits and the
+temporary workspace once. Right/left node blocks contain only their endpoints,
+mapping matrix, preview frame and independent Home target/Action. The former
+duplicate `left_hardware.yaml` is removed.
+
 ## Safety boundary
 
 The optional right O7 node stays off by default. Existing onsite evidence shows
@@ -45,8 +51,13 @@ with the hand node enabled.
   disabled, verified dual RM launch reuse, shared-profile validation and O7
   connect-only gate.
 - Four-package `colcon build --symlink-install` passed. The final isolated
-  regression reports 261 tests, 0 errors, 0 failures and 0 skipped; the new
+  regression reports 262 tests, 0 errors, 0 failures and 0 skipped; the new
   dual-launch contract contributes 7 passing tests.
+- Isolated hardware-mode parameter loading started only the two adapters, with
+  driver/control/TCP/bridges/O7 disabled. Both received common
+  `control_rate_hz=200.0` and workspace `[-1,-1,0]`; their driver identities,
+  mapping matrices and Home Actions remained correctly right/left-specific.
+  Both processes exited cleanly, and no real driver or control node was started.
 - Isolated domain 143 dry-run started both adapters, both Quest target bridges
   and the optional O7 dry-run node. `/left/rm_driver/movep_canfd_cmd` and
   `/right/rm_driver/movep_canfd_cmd` were absent, and all five processes exited

@@ -1,5 +1,10 @@
 # Left RM65 Quest teleop: software and dry-run phase
 
+> Current configuration note (2026-09-28): the later dual-bringup branch
+> consolidated the final right and left hardware settings into one
+> `config/hardware.yaml`. Historical checkpoints below retain the filenames
+> that existed when those tests were performed.
+
 ## Scope and base
 
 - Branch `feat/left-rm65-teleop`; independent worktree `/home/lh/quest2ros2_ws/.worktrees/left-rm65-teleop`.

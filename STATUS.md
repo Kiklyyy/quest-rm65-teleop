@@ -25,14 +25,21 @@ SDK 连接、真实反馈和张合方向已由现场操作者人工确认；本�
   `mode:=dry_run`, `motion_profile:=safe`, and `start_linkerhand:=false`.
   Existing endpoint identities, safety gates, watchdogs and Home parameters
   are unchanged.
+- Both hardware adapters now load one `config/hardware.yaml`. Its ROS 2 `/**`
+  block defines identical safety/timing values once, while the right and left
+  node blocks retain independent endpoints, mappings, frames and Home targets.
+  The duplicate `left_hardware.yaml` has been removed.
 - This checkpoint is software-only. No RM driver, `rm_control`, Quest hardware,
   O7 SDK connection or robot motion was started. The known right RM driver +
   O7 API2 coexistence/old-pose jump remains open, so automatic O7 startup is
   intentionally not the default. See `docs/progress/dual-quest-bringup.md`.
-- Four-package build passed; final isolated regression reports 261 tests with
+- Four-package build passed; final isolated regression reports 262 tests with
   zero errors/failures/skips. Dry-run showed both adapters, both target bridges
   and the O7 dry-run node together, with both real movep topics absent and a
   clean unified Ctrl-C shutdown.
+- Isolated hardware-mode config loading, with all external processes disabled,
+  confirmed that both adapters receive the shared 200 Hz/workspace values and
+  retain separate `/left`/`/right` driver identities, mappings and Home Actions.
 
 ## Right LinkerHand L7 Quest trigger toggle (software checkpoint)
 
@@ -51,7 +58,14 @@ SDK 连接、真实反馈和张合方向已由现场操作者人工确认；本�
 - **2026-09-26 left Home implementation checkpoint:** explicit left hardware config now maps physical Y=`button_upper` to the shared Home implementation, with 1.5 s hold, Grip released, 15 deg/s, six-joint target `[-90.52991560598026,-7.43359734865227,-62.41522144150158,-3.5143370089334374,-37.08400247904573,99.21228312734117]` degrees and Action `/left/rm_group_controller/follow_joint_trajectory`. Left dry-run still disables Home and creates no real Action client; right B/Home target and endpoints are unchanged. The left launch strictly validates same-arm endpoints and Home parameters. Adapter-only build, focused Python **16/16** and Home-related CTest **8/8** passed in isolated domain 143 after sourcing RealMan message packages. The first CTest invocation's isolated probe could not import `rm_ros_interfaces` until that environment was sourced; no code change was needed. **Left real Home motion and cancel remain pending**; no Home goal or robot motion occurred in this checkpoint. Quest input dropouts remain open with unchanged timeouts.
 - The right adapter executable/safety state machine now has explicit per-arm node identities, topics and preview/status/service endpoints. Right endpoint and Home configuration remain unchanged. A parameterized Quest target bridge and read-only monitor support a separate left dry-run launch.
 - Operator-confirmed left physical axes yield the mathematically proper matrix `[[0,0,-1],[-1,0,0],[0,1,0]]`; software tests cover XYZ and the existing world-frame orientation convention. Real Quest plus real robot-anchor **dry-run preview** passed all three translation signs. The later real-arm retest validates only the Quest `+Y` → left RM base `+Z` direction sign, with off-axis motion noted below.
-- The left dry-run config remains fail-closed. A separate versioned `left_hardware.yaml` enables hardware write and verified left mapping only in explicit hardware mode; Home remains disabled. The left launch reads the right `normal.yaml` motion values without modifying the right profile: scale 1.0, velocity 0.20 m/s, step 0.00050 m, anchor cap 1.0 m. The old `left_test` entry and dynamic P0 workspace are retired. The operator-authorized temporary hardware test workspace matches the right numeric bounds `[-1,-1,0]` to `[1,1,1.5]` m; it is not a final collision/workcell envelope. The adapter-only build and focused 16/16 config/launch/profile tests passed on isolated domain 143.
+- The left dry-run config remains fail-closed. Explicit left hardware mode now
+  selects the `left_rm65_teleop_adapter` section from the shared
+  `hardware.yaml`; hardware write, verified mapping and left Home remain
+  arm-specific. The left launch reads the right `normal.yaml` motion values
+  without modifying the right profile: scale 1.0, velocity 0.20 m/s, step
+  0.00050 m, anchor cap 1.0 m. The old `left_test` entry and dynamic P0
+  workspaces are retired. The shared temporary hardware workspace remains
+  `[-1,-1,0]` to `[1,1,1.5]` m and is not a final collision/workcell envelope.
 - The first normal-profile session had valid left-only command ownership and actual normal parameters. The operator confirmed clearance from fresh TCP `P0=(0.053452,-0.386812,0.477873)` m. Five Grip ACTIVE intervals occurred, including additional operator-initiated gestures during a requested pause, so only the first leftward interval is a labeled Test A; formal B/C and three orientation checks were not completed. Its Quest `+Y=81.741 mm` produced robot base `+Z=73.489 mm` at Grip release, confirming the physical-left sign but exceeding the instructed 30–60 mm gesture. Robot feedback changed another 11.383 mm in the first second after release, before a second Grip press. One later ACTIVE interval ended on `input_not_fresh`; watchdog count reached 24, mostly outside ACTIVE. The operator reported that forward/back felt unavailable, but no interval had more than +8.3 mm Quest-world X from its Grip anchor, so the intended +X 30–60 mm forward command was not recorded. This does not overturn the previous real Quest +X→base −Y evidence. The operator confirmed buttons released and both arms stationary; exact session processes were stopped, graph and TCP port cleared. Left XYZ and orientation moving-hardware validation remain incomplete. Full evidence is in the progress log.
 - Isolated `ROS_DOMAIN_ID=143`, localhost-only left Quest/feedback probe produced target, status and preview, with zero real left movep/movej/stop publishers and no Home Action client. That software phase did not start a driver or real motion.
 - On 2026-09-25, a single left RM driver supplied real six-joint and TCP feedback at about 198 Hz, and the onsite operator confirmed both arms remained stationary. The left adapter/TCP/bridge/monitor were started in `dry_run` on domain 42. Live graph checks before, during and after Quest gestures showed **zero publishers** on left movep, movej, and stop topics and zero Home Action clients. The first driver attempt revealed that global `__node:=rm_driver` also renames its internal UDP node; restarting only that driver without the node remap produced unique `/left/rm_driver` and `/left/udp_publish_node`. No left `rm_control`, Home goal, or robot motion was started.
