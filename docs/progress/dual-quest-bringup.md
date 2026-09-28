@@ -98,3 +98,21 @@ with the hand node enabled.
   control processes or TCP listener.
   No RM driver, controller, Quest endpoint or robot motion was started for
   this fix. Full hardware bringup remains for the onsite operator.
+
+## 2026-09-28 latest dual-session fault review
+
+- In the 21:46 dual hardware session, the last right-arm FAULT occurred at
+  21:50:11: `ACTIVE -> FAULT (anchor_angle_violation)`. The preceding Grip
+  anchor was taken at 21:50:09. The adapter checks the mapped Quest orientation
+  change from that anchor against `max_anchor_angle_rad=1.5707963268` (90 deg).
+- The status monitor at the fault reported Quest Pose, Inputs, Target, Robot
+  and Joints all OK. The right adapter log has six earlier `input_not_fresh`
+  rearm events; the left adapter has six, but neither adapter logged
+  `control_period_exceeded` in this session. The final fault is therefore an
+  angle-limit event, not evidence that the 50 ms control-period threshold
+  caused this stop. The trace does not establish whether the large angular
+  change came from intended wrist motion or tracking behavior.
+- No timeout or angle limit was changed. In particular,
+  `max_control_period` remains 0.050 s; changing it to 0.100 s would not address
+  the observed final fault. This review used existing logs only and sent no
+  hardware command.
