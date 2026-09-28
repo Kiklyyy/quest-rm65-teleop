@@ -299,7 +299,7 @@ The first orientation safety envelope is:
 | `rotation_scale` | `1.0` | one-to-one relative angle |
 | `max_angular_velocity_rad_s` | `1.5707963267948966` | 90 deg/s |
 | `max_angular_step_rad` | `0.01` | about 0.57 deg/cycle |
-| `max_anchor_angle_rad` | `1.5707963267948966` | 90 deg |
+| `max_anchor_angle_rad` | right hardware `4.71238898038469`; left hardware/dry-run `1.5707963267948966` | right 270 deg; left/dry-run 90 deg |
 | `unexpected_orientation_jump_rad` | `0.7853981633974483` | 45 deg |
 
 Angular output advances from the last command by shortest-path SLERP with
@@ -308,6 +308,11 @@ non-finite Quest/robot quaternions, an above-threshold consecutive Quest jump,
 or an above-limit anchor-relative angle stop the whole Pose command and require
 the existing fault/rearm sequence. Quaternion sign flips (`q` to `-q`) are
 the same orientation and do not create a jump.
+
+The current anchor comparison uses the shortest quaternion angle (0–180 deg).
+Consequently the right hardware 270 deg setting disables this particular
+anchor-angle fault; it does not track an accumulated 270 deg turn. The 45 deg
+consecutive-sample jump check and angular velocity/step limits remain active.
 
 The checked-in hardware base uses `follow=false`, a nominal 200 Hz timer, and a
 50 ms control-stall fault. The default `safe` motion profile adds the 5 mm/s

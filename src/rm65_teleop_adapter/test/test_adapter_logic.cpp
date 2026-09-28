@@ -526,6 +526,25 @@ TEST(AdapterLogic, AnchorAngleAboveNinetyDegreesFaultsAndStops)
   EXPECT_FALSE(output.command.has_value());
 }
 
+TEST(AdapterLogic, Right270DegreeAnchorAcceptsTrackedRotationPastNinetyDegrees)
+{
+  AdapterConfig config;
+  config.max_anchor_angle_rad = 1.5 * kPi;
+  config.max_angular_velocity_rad_s = 100.0;
+  config.max_angular_step_rad = kPi;
+  AdapterLogic logic(config);
+  auto input = fresh_input();
+  input.dt_seconds = 0.1;
+  activate(logic, input);
+  for (const double degrees : {40.0, 80.0, 120.0, 160.0, 200.0, 240.0, 270.0}) {
+    input.quest_orientation = axis_angle(0.0, 0.0, 1.0, degrees * kPi / 180.0);
+    input.quest_orientation_jump_rad = 40.0 * kPi / 180.0;
+    const auto output = logic.update(input);
+    EXPECT_EQ(output.state, AdapterState::ACTIVE) << degrees;
+    EXPECT_TRUE(output.command.has_value()) << degrees;
+  }
+}
+
 TEST(AdapterLogic, OrientationFaultDoesNotPublishTranslationCandidate)
 {
   AdapterLogic logic;

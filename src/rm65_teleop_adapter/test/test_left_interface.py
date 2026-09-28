@@ -40,6 +40,7 @@ def test_right_home_config_and_profile_remain_unchanged():
     assert right["home_enabled"] is True
     assert right["home_hold_seconds"] == 1.5
     assert right["home_speed_deg_s"] == 15.0
+    assert right["max_anchor_angle_rad"] == 4.71238898038469
     assert right["home_action_name"] == "/right/rm_group_controller/follow_joint_trajectory"
     assert right["quest_right_x_inputs_topic"] == "/q2r_left_hand_inputs"
     assert right["quest_right_first"] == [92.39, -40.604, 98.498, -2.934, 36.74, 69.0]
@@ -64,6 +65,7 @@ def test_left_hardware_home_is_independent_and_normal_overlay_isolated():
     assert left["home_button_field"] == "upper"  # Quest physical Y, not X/lower.
     assert left["home_hold_seconds"] == 1.5
     assert left["home_speed_deg_s"] == 15.0
+    assert left["max_anchor_angle_rad"] == 1.5707963267948966
     assert left["home_joint_names"] == [f"joint{i}" for i in range(1, 7)]
     assert left["home_joint_degrees"] == [
         -90.52991560598026, -7.43359734865227, -62.41522144150158,
@@ -90,7 +92,7 @@ def test_single_hardware_file_deduplicates_shared_parameters():
     left = document["left_rm65_teleop_adapter"]["ros__parameters"]
 
     assert not (PACKAGE / "config" / "left_hardware.yaml").exists()
-    assert set(common).isdisjoint(right)
+    assert set(common) & set(right) == {"max_anchor_angle_rad"}
     assert set(common).isdisjoint(left)
     common_arm_keys = set(right) & set(left)
     assert common_arm_keys == {
@@ -102,7 +104,7 @@ def test_single_hardware_file_deduplicates_shared_parameters():
     }
     assert set(right) - set(left) == {
         "quest_right_x_inputs_topic", "quest_right_first",
-        "quest_right_second", "quest_right_last",
+        "quest_right_second", "quest_right_last", "max_anchor_angle_rad",
     }
     assert set(left) - set(right) == {"home_button_field", "home_joint_degrees"}
     assert common["dry_run"] is False
@@ -159,4 +161,9 @@ def test_left_hardware_rejects_wrong_owner_or_weakened_safety(tmp_path):
     left["home_joint_degrees"][0] = float("nan")
     write()
     with pytest.raises(RuntimeError, match="six finite degrees"):
+        module._validate_hardware_config(left_path, tmp_path)
+    left["home_joint_degrees"][0] = -90.52991560598026
+    left["max_anchor_angle_rad"] = 4.71238898038469
+    write()
+    with pytest.raises(RuntimeError, match="safety mismatch: max_anchor_angle_rad"):
         module._validate_hardware_config(left_path, tmp_path)

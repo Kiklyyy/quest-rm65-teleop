@@ -53,7 +53,7 @@ SHARED_SAFETY_KEYS = (
     "joint_state_timeout", "control_rate_hz", "max_control_period", "follow",
     "stop_repeat_count", "target_timeout", "quest_pose_timeout", "inputs_timeout",
     "robot_timeout", "unexpected_target_jump_m", "rotation_scale",
-    "max_angular_velocity_rad_s", "max_angular_step_rad", "max_anchor_angle_rad",
+    "max_angular_velocity_rad_s", "max_angular_step_rad",
     "unexpected_orientation_jump_rad", "workspace_min", "workspace_max",
 )
 
@@ -111,6 +111,8 @@ def _validate_hardware_config(config_path, package_share):
     for key in SHARED_SAFETY_KEYS:
         if params.get(key) != right.get(key):
             raise RuntimeError(f"left hardware safety mismatch: {key}")
+    if params.get("max_anchor_angle_rad") != math.pi / 2:
+        raise RuntimeError("left hardware safety mismatch: max_anchor_angle_rad")
     safe = _read_params(Path(package_share) / "config" / "motion_profiles" / "safe.yaml",
                         "rm65_teleop_adapter")
     for key in MOTION_KEYS:

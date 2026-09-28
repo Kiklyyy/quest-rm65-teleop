@@ -8,8 +8,10 @@
 
 右臂 6DoF orientation extension 已完成自动化验证、隔离 synthetic dry-run、
 真实 Quest live quaternion/preview 验证，以及实际右 RM65 的首次人工姿态跟随测试。
-当前正式姿态参数恢复为 rotation_scale=1.0、90 deg/s、0.01 rad/cycle、90 deg
-单次 Grip anchor 上限。右手灵巧手 Quest 控制的软件版本已加入独立分支，
+当前姿态参数为 rotation_scale=1.0、90 deg/s、0.01 rad/cycle；右臂硬件
+Grip anchor 配置为 270 deg，左臂仍为 90 deg。当前四元数最短角最大为 180 deg，
+所以右臂的 270 deg 配置实际不触发锚点角 FAULT，但逐帧跳变、角速度和步长限制仍生效。
+右手灵巧手 Quest 控制的软件版本已加入独立分支，
 SDK 连接、真实反馈和张合方向已由现场操作者人工确认；本版 toggle 和双臂同场集成尚未验证；左臂其余验收、双臂和完整安全验收仍未完成。
 
 ## Dual Quest one-command bringup (software checkpoint)

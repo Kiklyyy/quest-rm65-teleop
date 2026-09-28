@@ -36,6 +36,8 @@
 # Right RM65 endpoints, mapping, frame and independently confirmed Home target.
 rm65_teleop_adapter:
   ros__parameters:
+    # Right-only anchor threshold. Shortest-angle math is at most 180 deg.
+    max_anchor_angle_rad: 4.71238898038469
     expected_adapter_node: /rm65_teleop_adapter
     expected_driver_node: /right/rm_driver
     expected_control_node: /right/rm_control

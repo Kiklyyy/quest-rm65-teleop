@@ -109,15 +109,25 @@ TEST(AdapterConfigValidation, RejectsNonFiniteOrNonPositiveAngularStep)
   }
 }
 
-TEST(AdapterConfigValidation, RejectsAnchorAngleOutsideZeroToPi)
+TEST(AdapterConfigValidation, AcceptsRightHardwareAnchorAngleOf270Degrees)
+{
+  AdapterConfig config;
+  config.max_anchor_angle_rad = 1.5 * kPi;
+  EXPECT_NO_THROW({
+    const AdapterLogic logic(config);
+    static_cast<void>(logic);
+  });
+}
+
+TEST(AdapterConfigValidation, RejectsAnchorAngleOutsideZeroToTwoPi)
 {
   for (const double value : {
-      0.0, -1.0, kPi + 1.0e-6, std::numeric_limits<double>::infinity(),
+      0.0, -1.0, 2.0 * kPi + 1.0e-6, std::numeric_limits<double>::infinity(),
       std::numeric_limits<double>::quiet_NaN()})
   {
     AdapterConfig config;
     config.max_anchor_angle_rad = value;
-    expect_invalid_config(config, "max_anchor_angle_rad must be in (0, pi]");
+    expect_invalid_config(config, "max_anchor_angle_rad must be in (0, 2*pi]");
   }
 }
 

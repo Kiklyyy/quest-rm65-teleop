@@ -116,3 +116,17 @@ with the hand node enabled.
   `max_control_period` remains 0.050 s; changing it to 0.100 s would not address
   the observed final fault. This review used existing logs only and sent no
   hardware command.
+
+## 2026-09-28 right anchor angle set to 270 degrees
+
+- Following the latest `anchor_angle_violation`, the operator requested a
+  270-degree limit. Right hardware now overrides the shared 90-degree value
+  with `max_anchor_angle_rad=4.71238898038469`; left hardware and dry-run retain
+  90 degrees. The adapter accepts the new finite range, while consecutive
+  orientation jump, angular velocity and step limits remain unchanged.
+- The implementation compares the shortest quaternion angle from the Grip
+  anchor, which is at most 180 degrees. Thus 270 degrees effectively prevents
+  this one anchor-angle FAULT; it does not track cumulative rotation through
+  270 degrees. Adapter build passed; focused Python tests passed 28/28,
+  configuration C++ tests passed 10/10, and selected orientation logic tests
+  passed 4/4. No real robot motion was performed for this configuration change.

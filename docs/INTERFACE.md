@@ -311,6 +311,13 @@ ACTIVE 状态通过既有 stop/fault/rearm 状态机退出，且该周期不提�
 deadman release 的优先级高于同周期 orientation event；正常松手保持既有
 release stop 和 release → press rearm 语义。
 
+右臂硬件 `max_anchor_angle_rad` 设为 `4.71238898038469`（270°）；左臂仍为
+`1.5707963267948966`（90°）。当前锚点相对角使用四元数最短角，数学范围
+只有 0–180°，因此右臂的 270° 阈值不会触发 `anchor_angle_violation`，
+也不表示系统能追踪完整的 270° 累积转动。连续样本的 45° 跳变检查、
+角速度与每周期角步长限制仍生效；本次不改变平移、Home 或 watchdog。
+
+
 ## 已确认的右 RM65 runtime 接口
 
 控制机环境实测：ROS 2 Humble，`ROS_DOMAIN_ID=42`，右臂地址 `169.254.128.19:8080`，UDP 回传 `169.254.128.100:8090`。

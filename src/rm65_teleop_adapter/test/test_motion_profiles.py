@@ -127,13 +127,19 @@ def test_base_configs_define_exact_orientation_envelope():
         "rotation_scale": 1.0,
         "max_angular_velocity_rad_s": 1.5707963267948966,
         "max_angular_step_rad": 0.01,
-        "max_anchor_angle_rad": 1.5707963267948966,
         "unexpected_orientation_jump_rad": 0.7853981633974483,
     }
     for config_name in ("dry_run.yaml", "hardware.yaml"):
         params = load_yaml_parameters(PACKAGE_ROOT / "config" / config_name)
         for key, value in expected.items():
             assert params[key] == pytest.approx(value, abs=1.0e-12)
+    assert load_yaml_parameters(PACKAGE_ROOT / "config" / "dry_run.yaml")[
+        "max_anchor_angle_rad"] == pytest.approx(1.5707963267948966)
+    assert load_yaml_parameters(PACKAGE_ROOT / "config" / "hardware.yaml")[
+        "max_anchor_angle_rad"] == pytest.approx(4.71238898038469)
+    assert load_yaml_parameters(
+        PACKAGE_ROOT / "config" / "hardware.yaml", "left_rm65_teleop_adapter"
+    )["max_anchor_angle_rad"] == pytest.approx(1.5707963267948966)
 
 
 def test_home_is_hardware_only_and_uses_confirmed_configuration():

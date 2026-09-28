@@ -42,6 +42,14 @@ void require_angle_in_zero_pi(const char * name, const double value)
   }
 }
 
+void require_anchor_angle_in_zero_two_pi(const double value)
+{
+  constexpr double kTwoPi = 6.28318530717958647692;
+  if (!std::isfinite(value) || value <= 0.0 || value > kTwoPi) {
+    throw std::invalid_argument("max_anchor_angle_rad must be in (0, 2*pi]");
+  }
+}
+
 }  // namespace
 
 const char * state_name(AdapterState state)
@@ -67,7 +75,7 @@ AdapterLogic::AdapterLogic(AdapterConfig config) : config_(std::move(config))
   require_finite_positive(
     "max_angular_velocity_rad_s", config_.max_angular_velocity_rad_s);
   require_finite_positive("max_angular_step_rad", config_.max_angular_step_rad);
-  require_angle_in_zero_pi("max_anchor_angle_rad", config_.max_anchor_angle_rad);
+  require_anchor_angle_in_zero_two_pi(config_.max_anchor_angle_rad);
   require_angle_in_zero_pi(
     "unexpected_orientation_jump_rad", config_.unexpected_orientation_jump_rad);
 }
