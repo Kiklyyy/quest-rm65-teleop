@@ -1,6 +1,6 @@
 # Project Status
 
-更新日期：2026-09-26
+更新日期：2026-09-28
 
 ## 当前总体阶段
 
@@ -9,7 +9,15 @@
 右臂 6DoF orientation extension 已完成自动化验证、隔离 synthetic dry-run、
 真实 Quest live quaternion/preview 验证，以及实际右 RM65 的首次人工姿态跟随测试。
 当前正式姿态参数恢复为 rotation_scale=1.0、90 deg/s、0.01 rad/cycle、90 deg
-单次 Grip anchor 上限。夹爪、左臂、双臂和完整安全验收仍未完成。
+单次 Grip anchor 上限。右手灵巧手 Quest 控制的软件版本已加入独立分支，
+真机动作尚未验证；左臂其余验收、双臂和完整安全验收仍未完成。
+
+## Right LinkerHand L7 Quest trigger control (software checkpoint)
+
+- Branch `feat/right-linkerhand-quest` starts at left teleop HEAD `57e919fe57818865b179be0d4ac2b57e0714fb9e`; it uses a separate worktree and leaves existing right/left hardware YAML modifications in the left worktree untouched.
+- An independent `/right_linkerhand` process subscribes to `/q2r_right_hand_inputs.press_index`. Released `0.0` requests `[255,0,255,255,255,255,255]`; fully pressed `1.0` requests `[0,0,0,0,0,0,255]`; intermediate values interpolate. `press_middle` Grip, `button_upper` B/Home, and the arm adapter are unchanged.
+- `right_quest_teleop.launch.py` defaults `start_linkerhand:=false`; explicit `true` in `mode:=dry_run` provides status/target preview without SDK connection, and explicit `true` in `mode:=hardware` selects the onsite right-L7 RealMan RS485 SDK. `/right/linkerhand/status` publishes stamped JSON with target, measured joints, raw faults, communication and input freshness. SDK force/current readings are not used.
+- Four-package build and adapter regression passed in the isolated domain: 17 CTest entries and 175 reported tests, 0 errors/failures/skips. A real dry-run launch check observed default-off and opt-in target/status behavior with zero right RM65 command publishers. Details are in `docs/progress/right-linkerhand-quest.md`. No LinkerHand hardware command, real grasp, knife test, or right RM65 motion was initiated for this checkpoint.
 
 ## Left RM65 Quest teleop (+Z and −Y directions observed; XYZ incomplete)
 
@@ -97,7 +105,7 @@
 - 来源：`/q2r_right_hand_inputs.press_middle`。
 - 按下阈值：`press_middle >= 0.60`；松开阈值：`press_middle <= 0.40`。
 - `0.40 < press_middle < 0.60` 保持上一状态；NaN/Inf 安全视为 released。
-- `button_lower` 不再控制右 RM65 teleop；`press_index` 当前仍未使用。
+- `button_lower` 不再控制右 RM65 teleop；`press_index` 仅供显式启动的独立右 L7 节点使用，arm adapter 不读取它。
 - 安全状态机语义不变：release 立即退出 ACTIVE/stop，数据恢复仍必须 release → press 重新授权。
 
 ## 版本化 motion profiles
@@ -132,7 +140,7 @@ field-tested tuning value / pending workspace and stopping-margin review，不�
 - 真实 RM65 orientation 的定量验收：逐轴精确角度、tracking error、overshoot、
   stopping distance、长时间静止抖动和更长时间连续运行记录。
 - 更系统的组合 rotation 与 translation + rotation 定量验证。
-- 夹爪。
+- 右 L7 真机张合、反馈与异常恢复验收；左夹爪仍未接入。
 - 左臂 −X 真机映射、故障停机余量、其他轴和双臂真机验收。
 - 全部真实断流场景和长期网络抖动。
 - 真机 deadman 停止余量的系统化验收。

@@ -2,7 +2,7 @@
 
 这是一个用于两位同学及各自 GPT/Codex 协作的私有源码快照仓库。它汇集当前实验室实际使用的 Quest2ROS2、`quest2ros` 自定义消息包和带现场补丁的 ROS TCP Endpoint，并记录接口、验证状态和分工。
 
-> **当前状态：** 右手 Quest → 右 RM65 的 XYZ、orientation/6DoF、Grip deadman 和 Home 已由现场操作者完成真机验证；Home 的运动中松开 B 停止与取消状态也已验证。Quest/TCP 输入仍会偶发超过 200 ms 的同步断流，触发 watchdog/rearm，稳定性问题尚未解决。左臂、夹爪和双臂控制仍未实现或验收。任何 push 都只是代码同步，不代表部署、重启或启用机器人。
+> **当前状态：** 右手 Quest → 右 RM65 的 XYZ、orientation/6DoF、Grip deadman 和 Home 已由现场操作者完成真机验证；Home 的运动中松开 B 停止与取消状态也已验证。右手 LinkerHand L7 的食指扳机控制已完成软件集成，真机张合尚未验证。Quest/TCP 输入仍会偶发超过 200 ms 的同步断流，触发 watchdog/rearm，稳定性问题尚未解决。左臂其余功能和双臂控制尚未完成验收。任何 push 都只是代码同步，不代表部署、重启或启用机器人。
 
 ## 目录结构
 
@@ -11,10 +11,34 @@
 | `src/Quest2ROS2/` | Quest 输入、模拟输入、右手虚拟目标 bridge 及其单元测试 |
 | `src/quest2ros/` | `OVR2ROSInputs` 与 `OVR2ROSHapticFeedback` 自定义消息定义 |
 | `src/rm65_teleop_adapter/` | 右 RM65 Quest 6DoF 遥操作、安全状态机与 Home Action |
+| `src/rm65_teleop_adapter/scripts/right_linkerhand_node.py` | 独立右 L7 食指扳机节点，默认不启动 |
 | `src/ros_tcp_communication/` | Unity/Quest 到 ROS 2 的 TCP Endpoint，包含当前现场通信补丁 |
 | `docs/` | 来源追溯、接口契约和 A/B 两条开发进度线 |
 
 详细状态见 [STATUS.md](STATUS.md)，接口与安全约束见 [docs/INTERFACE.md](docs/INTERFACE.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 右手 LinkerHand L7 软件预览
+
+右臂 launch 增加 `start_linkerhand:=true` 显式入口。默认 `false`；在
+`mode:=dry_run` 下，该节点只订阅 `/q2r_right_hand_inputs.press_index`
+并发布 `/right/linkerhand/status`，不导入或连接 SDK。扳机松开对应
+`[255,0,255,255,255,255,255]`，全压对应 `[0,0,0,0,0,0,255]`，
+中间线性插值。软件预览命令：
+
+```bash
+source /opt/ros/humble/setup.bash
+source /home/lh/robot/install/setup.bash
+source /home/lh/quest2ros2_ws/.worktrees/right-linkerhand-quest/install/setup.bash
+export ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1
+ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
+  mode:=dry_run start_linkerhand:=true start_tcp:=false \
+  start_bridge:=false start_status:=false use_rviz:=false
+```
+
+现场使用真实 Quest 时，`mode:=hardware start_linkerhand:=true` 才会
+连接现场 SDK 并可能向灵巧手写入目标；启动前须确认唯一 SDK 控制进程和现场
+操作授权。此节点不改变 RM65 的 Grip/B/Home 语义。接口与限制见
+[灵巧手进度](docs/progress/right-linkerhand-quest.md)。
 
 ## 左臂软件预览阶段
 

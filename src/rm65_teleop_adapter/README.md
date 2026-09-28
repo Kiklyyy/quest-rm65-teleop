@@ -185,7 +185,25 @@ middle-grip analog value uses hysteresis: values at or above `0.60` turn the
 deadman on, values at or below `0.40` turn it off, and values strictly between
 the thresholds preserve the previous state. NaN or infinite values safely turn
 the deadman off. `button_lower` no longer controls right-arm teleoperation, and
-`press_index` remains unused.
+`press_index` is not read by the arm adapter. An independent, opt-in right
+LinkerHand L7 node uses it for hand opening and closing.
+
+### Optional right LinkerHand L7 node
+
+`right_quest_teleop.launch.py` defaults `start_linkerhand:=false`. Set it to
+`true` for `/right_linkerhand` to subscribe to `/q2r_right_hand_inputs` and
+publish `/right/linkerhand/status` (`std_msgs/msg/String` JSON). In
+`mode:=dry_run`, it publishes only mapped targets and status. In
+`mode:=hardware`, it instantiates the onsite right-L7 SDK through the RM65
+tool RS485 port and writes changed targets at no more than 20 Hz. The SDK
+instance belongs only to this process.
+
+`press_index=0.0` maps to `[255,0,255,255,255,255,255]` (open), `1.0`
+to `[0,0,0,0,0,0,255]` (closed), with per-axis interpolation. Non-finite
+input maps to open; stale input suspends writes. The status JSON contains
+`stamp`, seven-axis `target`/`actual`, raw `fault_codes`, `communication_ok`,
+`input_fresh`, `dry_run`, `state`, and `error`. Hardware hand movement remains
+unvalidated; use the launch's dry-run mode for isolated software checks.
 
 The adapter status JSON publishes `deadman_pressed` and
 `deadman_source="press_middle"`. The read-only monitor displays this semantic
