@@ -1,5 +1,45 @@
 # Interface Contract
 
+## 右手 LinkerHand L7 Quest toggle（软件完成，集成真机待测）
+
+独立节点 `/right_linkerhand` 只订阅 `/q2r_right_hand_inputs`
+（`quest2ros/msg/OVR2ROSInputs`）的 `press_index`。`>=0.60` 为按下，
+`<=0.40` 为松开，中间区间保持上一扳机状态。每次有效松开→按下上升沿切换一次：
+第一次为 CLOSED `[73,0,0,0,0,0,156]`，第二次为 OPEN
+`[73,0,255,255,255,255,156]`，之后交替。七轴顺序由现场 SDK
+`O7_JOINT_KEYS` 确认为 `Thumb_Pitch, Thumb_Yaw, Index_Pitch,
+Middle_Pitch, Ring_Pitch, Little_Pitch, Thumb_Roll`。节点启动逻辑状态为
+OPEN，但 `target=null`、不自动发 OPEN；连接后先读 `get_state()` 和
+`get_fault()`。数据 stale 或 NaN/Inf 时保持手位、不切换并撤销按压资格；
+恢复后须先有有效松开样本，下一次按下才能切换。此节点不读取 Grip、Home、
+摇杆或 Quest Pose，也不改变右 RM65 adapter 的状态机。
+
+`right_quest_teleop.launch.py` 的 `start_linkerhand:=false|true` 默认
+`false`。显式 `true` 且 `mode:=dry_run` 不导入或连接 SDK；`mode:=hardware`
+由该节点独占实例化现场
+`LinkerHandApi(hand_type="right", hand_joint="L7", modbus="RML")`。
+诊断参数 `connect_only:=true` 只允许与 `dry_run:=false`、
+`hardware_write_enabled:=true` 同用：仍建立 SDK 连接、轮询
+`get_state()`/`get_fault()`，但无论 Quest 输入如何都禁止 `finger_move()`。
+右臂 launch 提供 `linkerhand_connect_only:=true` 传入该参数；单独运行
+`right_linkerhand_node` 可在不启动 arm adapter 的情况下诊断。
+SDK 固定路径为 `/home/lh/quest2ros2_ws/linkerhand/linker_hand_python_sdk`，
+使用现场 RealMan API2 工具端 RS485 适配。硬件启动会配置右臂工具端电压/Modbus；
+同一时刻只能有一个灵巧手 SDK 控制进程。右 RM driver 仍由原启动链管理。
+
+`/right/linkerhand/status` 为 `std_msgs/msg/String` JSON：`stamp`、
+`trigger_value`、`trigger_pressed`、`trigger_armed`、
+`hand_toggle_state`（OPEN/CLOSED）、`target`、`actual`、`fault_codes`、
+`communication_ok`、`input_fresh`、`dry_run`、`state`、`error`、
+`invalid_input_count`、`connect_only`。只连接状态为 `CONNECT_ONLY`，
+`target=null`；启动未按压时 `target=null`；dry-run 的 `actual`、
+`fault_codes` 为 null、`communication_ok=false`。输入 stale 不产生新命令；
+故障码或通信异常阻止硬件写入，日志限流。`get_force()`、`get_current()`
+不用于本版反馈或闭环。
+
+现场操作者已人工确认 SDK 连接、真实反馈和手指张合方向。本版 toggle
+软件尚未做双 RM65 + 右 LinkerHand 同场真机验收。
+
 本文件区分“当前代码已经存在的接口”和“计划/尚未完全验收的接口”。不要把计划接口写成当前能力。
 
 ## 当前已经存在
@@ -14,7 +54,7 @@
 输入 Pose 的 header、frame 和 stamp 不作为机器人坐标依据。现有
 `quest_right_target_bridge` 仍只处理 position；orientation 不经过该 bridge，而由
 `rm65_teleop_adapter` 直接读取原始 Quest Pose。当前仍不使用摇杆、
-`press_index` remains unused; physical A=`button_lower` is reserved without motion authority; physical B=`button_upper` controls Home.
+`press_index` is used only by the separate right L7 node when explicitly started; physical A=`button_lower` is reserved without motion authority; physical B=`button_upper` controls Home.
 
 ### 输出
 
@@ -98,7 +138,7 @@ topic 名称均不属于 motion profile。dry-run 始终只加载 `dry_run.yaml`
 
 - `press_middle >= 0.60` 将语义状态置为 pressed，`press_middle <= 0.40` 将其置为 released，中间迟滞区保持上一状态；
 - `press_middle` 为 NaN/Inf 时安全置为 released；
-- `button_lower` 不再参与右 RM65 teleop deadman，`press_index` 当前仍未使用；
+- `button_lower` 不再参与右 RM65 teleop deadman；`press_index` 只供独立右手 L7 节点使用，arm adapter 仍不读取它；
 - B 侧独立检查 Inputs 接收时间、原始 Quest Pose、虚拟 target 和机器人反馈；
 - 任一路超时、非有限数据、工作空间违规或突跳都会退出 ACTIVE；
 - 数据恢复不得自动继续，必须先看到语义 deadman released，再由下一次 released → pressed 重新采集双锚点；

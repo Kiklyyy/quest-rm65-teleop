@@ -185,7 +185,35 @@ middle-grip analog value uses hysteresis: values at or above `0.60` turn the
 deadman on, values at or below `0.40` turn it off, and values strictly between
 the thresholds preserve the previous state. NaN or infinite values safely turn
 the deadman off. `button_lower` no longer controls right-arm teleoperation, and
-`press_index` remains unused.
+`press_index` is not read by the arm adapter. An independent, opt-in right
+LinkerHand L7 node uses it for hand opening and closing.
+
+### Optional right LinkerHand L7 node
+
+`right_quest_teleop.launch.py` defaults `start_linkerhand:=false`. Set it to
+`true` for `/right_linkerhand` to subscribe to `/q2r_right_hand_inputs` and
+publish `/right/linkerhand/status` (`std_msgs/msg/String` JSON). In
+`mode:=dry_run`, it publishes only mapped targets and status. In
+`mode:=hardware`, it instantiates the onsite right-L7 SDK through the RM65
+tool RS485 port and writes changed targets at no more than 20 Hz. The SDK
+instance belongs only to this process.
+For coexistence diagnosis, `linkerhand_connect_only:=true` with hardware mode
+still connects the SDK and polls feedback/faults but never calls `finger_move`.
+Run `right_linkerhand_node` alone with `dry_run:=false`,
+`hardware_write_enabled:=true`, and `connect_only:=true` when the arm adapter
+must remain off. Status then reports `CONNECT_ONLY` and `target=null`.
+
+`press_index >= 0.60` means pressed and `<= 0.40` means released.
+Each armed released-to-pressed edge toggles between CLOSED
+`[73,0,0,0,0,0,156]` (first press) and OPEN
+`[73,0,255,255,255,255,156]` (second press). Startup does not send a hand
+command; status `target` is null until the first press. Stale or non-finite
+input holds the hand and requires a valid release before the next toggle.
+Status JSON contains `stamp`, `trigger_value`, `trigger_pressed`,
+`trigger_armed`, `hand_toggle_state`, seven-axis `target`/`actual`, raw
+`fault_codes`, `communication_ok`, `input_fresh`, `dry_run`, `state`, and
+`error`. Standalone SDK hardware operation was reported validated onsite;
+the current toggle and dual-arm coexistence are pending hardware validation.
 
 The adapter status JSON publishes `deadman_pressed` and
 `deadman_source="press_middle"`. The read-only monitor displays this semantic

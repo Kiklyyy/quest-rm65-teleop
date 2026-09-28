@@ -470,6 +470,23 @@ private:
     }
     if (output.stop_requested) publish_stop();
     if (output.command.has_value() && output.state == AdapterState::ACTIVE) {
+      if (previous == AdapterState::ARMED) {
+        const auto & anchor = input.robot_pose;
+        const auto & first = *output.command;
+        const double dx = first.position[0] - anchor.position[0];
+        const double dy = first.position[1] - anchor.position[1];
+        const double dz = first.position[2] - anchor.position[2];
+        RCLCPP_INFO(
+          get_logger(),
+          "first_command_anchor anchor=(%.6f,%.6f,%.6f) first=(%.6f,%.6f,%.6f) "
+          "delta_m=%.9f anchor_q=(%.6f,%.6f,%.6f,%.6f) "
+          "first_q=(%.6f,%.6f,%.6f,%.6f)",
+          anchor.position[0], anchor.position[1], anchor.position[2],
+          first.position[0], first.position[1], first.position[2],
+          std::sqrt(dx * dx + dy * dy + dz * dz),
+          anchor.orientation.x, anchor.orientation.y, anchor.orientation.z, anchor.orientation.w,
+          first.orientation.x, first.orientation.y, first.orientation.z, first.orientation.w);
+      }
       geometry_msgs::msg::PoseStamped preview;
       preview.header.stamp = get_clock()->now();
       preview.header.frame_id = preview_frame_id_;

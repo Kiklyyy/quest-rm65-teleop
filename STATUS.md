@@ -1,6 +1,6 @@
 # Project Status
 
-更新日期：2026-09-26
+更新日期：2026-09-28
 
 ## 当前总体阶段
 
@@ -9,7 +9,18 @@
 右臂 6DoF orientation extension 已完成自动化验证、隔离 synthetic dry-run、
 真实 Quest live quaternion/preview 验证，以及实际右 RM65 的首次人工姿态跟随测试。
 当前正式姿态参数恢复为 rotation_scale=1.0、90 deg/s、0.01 rad/cycle、90 deg
-单次 Grip anchor 上限。夹爪、左臂、双臂和完整安全验收仍未完成。
+单次 Grip anchor 上限。右手灵巧手 Quest 控制的软件版本已加入独立分支，
+SDK 连接、真实反馈和张合方向已由现场操作者人工确认；本版 toggle 和双臂同场集成尚未验证；左臂其余验收、双臂和完整安全验收仍未完成。
+
+## Right LinkerHand L7 Quest trigger toggle (software checkpoint)
+
+- Branch `feat/right-linkerhand-quest` is based on left teleop SHA `57e919fe57818865b179be0d4ac2b57e0714fb9e`; separate left-worktree YAML edits and `/home/lh/robot` were untouched.
+- Independent `/right_linkerhand` subscribes only to right `press_index`: press `>=0.60`, release `<=0.40`, hysteresis between. Each armed rising edge toggles CLOSED `[73,0,0,0,0,0,156]` then OPEN `[73,0,255,255,255,255,156]`. Startup has logical OPEN and `target=null`, with no automatic hand motion. Stale/non-finite input holds position and requires a valid release before rearming. Grip and B/Home are unchanged.
+- Right launch defaults `start_linkerhand:=false`. Dry-run uses no SDK. Hardware mode uses the onsite right-L7 RealMan RS485 SDK and reads feedback/faults before any command. Status includes trigger value/semantic/armed state, hand toggle state, target/actual, raw fault codes, communication and input freshness.
+- The onsite operator reports standalone SDK connection, real feedback, and open/close direction passed. The current toggle revision has software validation only. Dual RM65 + right LinkerHand coexistence and cross-control tests were deferred by the operator; no live command was sent this revision. Quest/TCP dropouts remain open; grasp force and knife handling remain unverified.
+- **Right-side coexistence A/B observed onsite after that checkpoint:** with `start_linkerhand:=false`, right Grip re-anchors normally and does not jump; with `start_linkerhand:=true`, right Grip first jumps toward an old position after the SDK establishes its connection. The adapter's first command is already assigned the current robot anchor by its existing logic. The exact controller/API2 conflict is not yet known. This branch now adds a hardware `connect_only` diagnostic mode and a first-command anchor/pose-delta log; neither changes arm motion logic. The operator was unavailable for the new staged test, so no additional real robot command was issued. See the coexistence diagnosis in `docs/progress/right-linkerhand-quest.md`.
+- Coexistence software checkpoint: four packages built in separate `/tmp` build/install paths; isolated domain 143 regression passed 18/18 CTest entries and 183/183 reported tests, including new SDK constructor-call mocks. Dry-run launch off/on smoke passed. The exact root cause, SDK/driver coexistence, and no-jump fix remain **unverified** until the operator-supervised A/B/C hardware sequence.
+- Four-package build passed. Isolated adapter regression passed 17/17 CTest entries and 177/177 reported tests (toggle logic 9, ROS node 8, launch contract 2), with zero failures/skips. Isolated real-launch dry-run smoke confirmed hand off/on and two toggles without a right-arm movep publisher. Details are in `docs/progress/right-linkerhand-quest.md`.
 
 ## Left RM65 Quest teleop (+Z and −Y directions observed; XYZ incomplete)
 
@@ -97,7 +108,7 @@
 - 来源：`/q2r_right_hand_inputs.press_middle`。
 - 按下阈值：`press_middle >= 0.60`；松开阈值：`press_middle <= 0.40`。
 - `0.40 < press_middle < 0.60` 保持上一状态；NaN/Inf 安全视为 released。
-- `button_lower` 不再控制右 RM65 teleop；`press_index` 当前仍未使用。
+- `button_lower` 不再控制右 RM65 teleop；`press_index` 仅供显式启动的独立右 L7 节点使用，arm adapter 不读取它。
 - 安全状态机语义不变：release 立即退出 ACTIVE/stop，数据恢复仍必须 release → press 重新授权。
 
 ## 版本化 motion profiles
@@ -132,7 +143,7 @@ field-tested tuning value / pending workspace and stopping-margin review，不�
 - 真实 RM65 orientation 的定量验收：逐轴精确角度、tracking error、overshoot、
   stopping distance、长时间静止抖动和更长时间连续运行记录。
 - 更系统的组合 rotation 与 translation + rotation 定量验证。
-- 夹爪。
+- 右 L7 的本版 Quest toggle、双 RM65 同场可用性、SDK/右 driver 共存与异常恢复验收；SDK 单独连接、反馈和张合方向已由现场操作者确认，左夹爪仍未接入。
 - 左臂 −X 真机映射、故障停机余量、其他轴和双臂真机验收。
 - 全部真实断流场景和长期网络抖动。
 - 真机 deadman 停止余量的系统化验收。

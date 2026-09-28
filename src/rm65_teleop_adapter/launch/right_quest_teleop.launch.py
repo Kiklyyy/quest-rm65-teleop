@@ -55,6 +55,31 @@ def _adapter_node(context):
     ]
 
 
+def _linkerhand_parameters(context):
+    hardware = LaunchConfiguration("mode").perform(context) == "hardware"
+    connect_only_value = LaunchConfiguration("linkerhand_connect_only").perform(context).lower()
+    if connect_only_value not in ("true", "false"):
+        raise RuntimeError("linkerhand_connect_only must be true or false")
+    connect_only = connect_only_value == "true"
+    if connect_only and not hardware:
+        raise RuntimeError("linkerhand_connect_only requires mode:=hardware")
+    return {
+        "dry_run": not hardware,
+        "hardware_write_enabled": hardware,
+        "connect_only": connect_only,
+    }
+
+
+def _linkerhand_node(context):
+    return [Node(
+        package="rm65_teleop_adapter",
+        executable="right_linkerhand_node",
+        name="right_linkerhand",
+        output="screen",
+        parameters=[_linkerhand_parameters(context)],
+    )]
+
+
 def generate_launch_description():
     package_share = Path(get_package_share_directory("rm65_teleop_adapter"))
     tcp_share = Path(get_package_share_directory("ros_tcp_endpoint"))
@@ -92,6 +117,16 @@ def generate_launch_description():
             description="Start the read-only teleop status monitor",
         ),
         DeclareLaunchArgument(
+            "start_linkerhand",
+            default_value="false",
+            description="Start the right L7 hand node; dry-run previews, hardware connects SDK",
+        ),
+        DeclareLaunchArgument(
+            "linkerhand_connect_only",
+            default_value="false",
+            description="Initialize right L7 SDK and poll feedback; never send finger_move",
+        ),
+        DeclareLaunchArgument(
             "start_rm_driver",
             default_value="false",
             description="Reserved until a verified right-only RM65 launch exists",
@@ -109,6 +144,10 @@ def generate_launch_description():
             condition=IfCondition(LaunchConfiguration("start_bridge")),
         ),
         OpaqueFunction(function=_adapter_node),
+        OpaqueFunction(
+            function=_linkerhand_node,
+            condition=IfCondition(LaunchConfiguration("start_linkerhand")),
+        ),
         Node(
             package="rm65_teleop_adapter",
             executable="teleop_status_monitor",

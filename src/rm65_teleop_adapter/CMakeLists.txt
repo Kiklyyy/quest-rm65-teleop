@@ -31,6 +31,8 @@ ament_target_dependencies(rm65_teleop_adapter_node geometry_msgs quest2ros rclcp
 install(TARGETS adapter_logic home_action_client rm65_teleop_adapter_node ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS scripts/teleop_status_monitor.py DESTINATION lib/${PROJECT_NAME} RENAME teleop_status_monitor)
 install(FILES scripts/teleop_status_logic.py DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS scripts/right_linkerhand_node.py DESTINATION lib/${PROJECT_NAME} RENAME right_linkerhand_node)
+install(FILES scripts/right_linkerhand_logic.py DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
 install(FILES README.md DESTINATION share/${PROJECT_NAME})
@@ -97,6 +99,27 @@ if(BUILD_TESTING)
     PYTHON_EXECUTABLE /usr/bin/python3
     TIMEOUT 45
     ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1)
+  ament_add_pytest_test(
+    test_right_linkerhand_logic
+    test/test_right_linkerhand_logic.py
+    PYTHON_EXECUTABLE /usr/bin/python3
+    ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1)
+  ament_add_pytest_test(
+    test_right_linkerhand_node
+    test/test_right_linkerhand_node.py
+    PYTHON_EXECUTABLE /usr/bin/python3
+    TIMEOUT 45
+    ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1)
+  ament_add_pytest_test(
+    test_right_linkerhand_launch
+    test/test_right_linkerhand_launch.py
+    PYTHON_EXECUTABLE /usr/bin/python3
+    ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1)
+  ament_add_pytest_test(
+    test_right_linkerhand_transport
+    test/test_right_linkerhand_transport.py
+    PYTHON_EXECUTABLE /usr/bin/python3
+    ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1)
 endif()
 ament_export_include_directories(include)
 ament_export_libraries(adapter_logic)
