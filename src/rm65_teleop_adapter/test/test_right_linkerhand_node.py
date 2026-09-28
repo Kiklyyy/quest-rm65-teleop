@@ -1,4 +1,4 @@
-"""Isolated ROS tests: synthetic Quest Inputs and an in-memory SDK stand-in."""
+"""Isolated ROS tests using synthetic Quest Inputs and an in-memory SDK."""
 
 import json
 import sys
@@ -13,25 +13,30 @@ from rclpy.executors import SingleThreadedExecutor
 from rclpy.parameter import Parameter
 from std_msgs.msg import String
 
-
 sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 from right_linkerhand_node import RightLinkerHandNode
+
+CLOSED = [73, 0, 0, 0, 0, 0, 156]
+OPEN = [73, 0, 255, 255, 255, 255, 156]
 
 
 class FakeHand:
     def __init__(self):
         self.writes = []
-        self.actual = [10, 0, 10, 10, 10, 10, 255]
+        self.actual = [10, 0, 10, 10, 10, 10, 156]
         self.faults = [0] * 7
         self.closed = False
+        self.reads = []
 
     def finger_move(self, pose):
         self.writes.append(list(pose))
 
     def get_state(self):
+        self.reads.append("state")
         return list(self.actual)
 
     def get_fault(self):
+        self.reads.append("fault")
         return list(self.faults)
 
     def close(self):
@@ -45,118 +50,155 @@ def ros():
     rclpy.shutdown()
 
 
-def spin_until(executor, predicate, timeout_s=3.0):
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        executor.spin_once(timeout_sec=0.05)
-        if predicate():
-            return
-    raise AssertionError("ROS test condition timed out")
+class Harness:
+    def __init__(self, node):
+        self.node = node
+        self.peer = rclpy.create_node("right_linkerhand_test_peer")
+        self.pub = self.peer.create_publisher(OVR2ROSInputs, "/q2r_right_hand_inputs", 10)
+        self.statuses = []
+        self.peer.create_subscription(
+            String, "/right/linkerhand/status",
+            lambda msg: self.statuses.append(json.loads(msg.data)), 10)
+        self.executor = SingleThreadedExecutor()
+        self.executor.add_node(node)
+        self.executor.add_node(self.peer)
+        self.wait(lambda: self.pub.get_subscription_count() > 0 and self.statuses)
+
+    def wait(self, predicate, timeout_s=3.0):
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            self.executor.spin_once(timeout_sec=0.025)
+            if predicate():
+                return
+        raise AssertionError("ROS test condition timed out")
+
+    def send(self, value, predicate):
+        previous = len(self.statuses)
+        msg = OVR2ROSInputs()
+        msg.press_index = value
+        self.pub.publish(msg)
+        self.wait(lambda: len(self.statuses) > previous and predicate(self.statuses[-1]))
+        return self.statuses[-1]
+
+    def settle(self, seconds=0.15):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            self.executor.spin_once(timeout_sec=0.02)
+
+    def close(self):
+        self.executor.remove_node(self.peer)
+        self.executor.remove_node(self.node)
+        self.peer.destroy_node()
+        self.node.destroy_node()
 
 
-def exercise_node(node, values, predicate):
-    peer = rclpy.create_node("right_linkerhand_test_peer")
-    pub = peer.create_publisher(OVR2ROSInputs, "/q2r_right_hand_inputs", 10)
-    statuses = []
-    peer.create_subscription(
-        String, "/right/linkerhand/status",
-        lambda msg: statuses.append(json.loads(msg.data)), 10)
-    executor = SingleThreadedExecutor()
-    executor.add_node(node)
-    executor.add_node(peer)
-    try:
-        for value in values:
-            msg = OVR2ROSInputs()
-            msg.press_index = value
-            spin_until(executor, lambda: pub.get_subscription_count() > 0)
-            pub.publish(msg)
-            spin_until(executor, lambda: predicate(statuses, value))
-        return statuses
-    finally:
-        executor.remove_node(peer)
-        executor.remove_node(node)
-        peer.destroy_node()
-        node.destroy_node()
+def hardware_node(fake, **overrides):
+    parameters = {"dry_run": False, "hardware_write_enabled": True,
+                  "feedback_rate_hz": 20.0, "input_timeout_s": 0.5}
+    parameters.update(overrides)
+    return RightLinkerHandNode(
+        hand_factory=lambda **_: fake,
+        parameter_overrides=[Parameter(k, value=v) for k, v in parameters.items()])
 
 
-def test_dry_run_maps_quest_topic_and_reports_status_without_sdk(ros):
+def test_dry_run_startup_toggle_and_status_without_sdk(ros):
     def forbidden_factory(**_):
         raise AssertionError("dry-run must not instantiate SDK")
 
-    node = RightLinkerHandNode(hand_factory=forbidden_factory)
-    expected = {
-        0.0: [255, 0, 255, 255, 255, 255, 255],
-        0.5: [128, 0, 128, 128, 128, 128, 255],
-        1.0: [0, 0, 0, 0, 0, 0, 255],
-    }
-    statuses = exercise_node(
-        node, [0.0, 0.5, 1.0],
-        lambda received, value: any(s["target"] == expected[value] for s in received))
-    for target in expected.values():
-        match = next(s for s in statuses if s["target"] == target)
-        assert match["dry_run"] is True
-        assert match["actual"] is None
-        assert match["fault_codes"] is None
-        assert match["communication_ok"] is False
-        assert match["input_fresh"] is True
-        assert isinstance(match["stamp"]["sec"], int)
+    harness = Harness(RightLinkerHandNode(hand_factory=forbidden_factory))
+    try:
+        startup = harness.statuses[-1]
+        assert startup["target"] is None
+        assert startup["hand_toggle_state"] == "OPEN"
+        assert startup["trigger_armed"] is True
+        assert startup["actual"] is None
+        assert startup["communication_ok"] is False
+        first = harness.send(0.6, lambda s: s["target"] == CLOSED)
+        assert first["trigger_pressed"] and first["hand_toggle_state"] == "CLOSED"
+        assert first["dry_run"] and first["input_fresh"]
+        assert isinstance(first["stamp"]["sec"], int)
+        harness.send(0.0, lambda s: not s["trigger_pressed"])
+        assert harness.statuses[-1]["target"] == CLOSED
+        second = harness.send(1.0, lambda s: s["target"] == OPEN)
+        assert second["hand_toggle_state"] == "OPEN"
+    finally:
+        harness.close()
 
 
-def test_nonfinite_quest_input_opens_hand_and_reports_diagnostic(ros):
-    node = RightLinkerHandNode()
-    statuses = exercise_node(
-        node, [float("nan")],
-        lambda received, _: any(
-            s["target"] == [255, 0, 255, 255, 255, 255, 255]
-            and s["invalid_input_count"] == 1
-            and "non-finite" in s["error"] for s in received))
-    assert statuses[-1]["state"] == "DRY_RUN"
-
-
-def test_fake_sdk_receives_only_changed_targets_and_reports_feedback(ros):
+def test_mock_hardware_one_finger_move_per_toggle(ros):
     fake = FakeHand()
-    node = RightLinkerHandNode(
-        hand_factory=lambda **kwargs: fake,
-        parameter_overrides=[
-            Parameter("dry_run", value=False),
-            Parameter("hardware_write_enabled", value=True),
-            Parameter("input_timeout_s", value=0.2),
-            Parameter("feedback_rate_hz", value=20.0),
-        ])
-    statuses = exercise_node(
-        node, [0.5, 1.0],
-        lambda received, value: any(
-            s["target"] == ([128, 0, 128, 128, 128, 128, 255] if value == 0.5
-                            else [0, 0, 0, 0, 0, 0, 255])
-            and s["actual"] == fake.actual and s["communication_ok"]
-            for s in received) and bool(fake.writes) and fake.writes[-1] == (
-                [128, 0, 128, 128, 128, 128, 255] if value == 0.5
-                else [0, 0, 0, 0, 0, 0, 255]))
-    assert fake.writes == [
-        [128, 0, 128, 128, 128, 128, 255],
-        [0, 0, 0, 0, 0, 0, 255],
-    ]
-    assert statuses[-1]["fault_codes"] == [0] * 7
+    harness = Harness(hardware_node(fake))
+    try:
+        assert fake.reads[:2] == ["state", "fault"]
+        assert fake.writes == []
+        assert harness.statuses[-1]["target"] is None
+        harness.send(0.6, lambda s: s["target"] == CLOSED)
+        harness.wait(lambda: fake.writes == [CLOSED])
+        harness.send(1.0, lambda s: s["trigger_pressed"])
+        harness.settle()
+        assert fake.writes == [CLOSED]
+        harness.send(0.4, lambda s: not s["trigger_pressed"])
+        harness.settle()
+        assert fake.writes == [CLOSED]
+        harness.send(0.6, lambda s: s["target"] == OPEN)
+        harness.wait(lambda: fake.writes == [CLOSED, OPEN])
+        assert harness.statuses[-1]["fault_codes"] == [0] * 7
+        assert harness.statuses[-1]["communication_ok"]
+    finally:
+        harness.close()
     assert fake.closed
 
 
-def test_existing_hand_fault_blocks_first_motion_and_is_reported(ros):
+def test_stale_reconnect_pressed_requires_release(ros):
+    fake = FakeHand()
+    harness = Harness(hardware_node(fake, input_timeout_s=0.2))
+    try:
+        harness.send(0.6, lambda s: s["target"] == CLOSED)
+        harness.wait(lambda: fake.writes == [CLOSED])
+        harness.node._last_input_s = time.monotonic() - 1.0
+        harness.wait(lambda: harness.statuses[-1]["state"] == "INPUT_STALE")
+        assert harness.statuses[-1]["trigger_armed"] is False
+        harness.send(1.0, lambda s: s["input_fresh"] and s["trigger_pressed"])
+        harness.settle()
+        assert fake.writes == [CLOSED]
+        harness.send(0.4, lambda s: s["trigger_armed"])
+        harness.send(0.6, lambda s: s["target"] == OPEN)
+        harness.wait(lambda: fake.writes == [CLOSED, OPEN])
+    finally:
+        harness.close()
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_nonfinite_does_not_send_and_requires_release(ros, bad):
+    fake = FakeHand()
+    harness = Harness(hardware_node(fake))
+    try:
+        harness.send(bad, lambda s: s["invalid_input_count"] == 1)
+        assert harness.statuses[-1]["target"] is None
+        assert harness.statuses[-1]["trigger_value"] is None
+        assert harness.statuses[-1]["trigger_armed"] is False
+        assert "non-finite" in harness.statuses[-1]["error"]
+        harness.send(1.0, lambda s: s["trigger_pressed"])
+        harness.settle()
+        assert fake.writes == []
+        harness.send(0.4, lambda s: s["trigger_armed"])
+        harness.send(0.6, lambda s: s["target"] == CLOSED)
+        harness.wait(lambda: fake.writes == [CLOSED])
+    finally:
+        harness.close()
+
+
+def test_existing_hand_fault_blocks_first_motion(ros):
     fake = FakeHand()
     fake.faults[2] = 7
-    node = RightLinkerHandNode(
-        hand_factory=lambda **kwargs: fake,
-        parameter_overrides=[
-            Parameter("dry_run", value=False),
-            Parameter("hardware_write_enabled", value=True),
-            Parameter("feedback_rate_hz", value=1.0),
-            Parameter("input_timeout_s", value=2.0),
-        ])
-    statuses = exercise_node(
-        node, [1.0],
-        lambda received, _: any(s["state"] == "HAND_FAULT" and
-                                s["fault_codes"] == fake.faults for s in received))
-    assert fake.writes == []
-    assert any(s["state"] == "HAND_FAULT" for s in statuses)
+    harness = Harness(hardware_node(fake))
+    try:
+        harness.send(0.6, lambda s: s["state"] == "HAND_FAULT")
+        harness.settle()
+        assert fake.writes == []
+        assert harness.statuses[-1]["fault_codes"] == fake.faults
+    finally:
+        harness.close()
 
 
 def test_hardware_gate_rejects_inconsistent_parameters(ros):

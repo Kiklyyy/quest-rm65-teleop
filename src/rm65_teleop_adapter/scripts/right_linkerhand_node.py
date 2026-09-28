@@ -12,7 +12,7 @@ from quest2ros.msg import OVR2ROSInputs
 from rclpy.node import Node
 from std_msgs.msg import String
 
-from right_linkerhand_logic import target_pose
+from right_linkerhand_logic import LinkerHandToggleLogic
 
 
 DEFAULT_SDK_PATH = "/home/lh/quest2ros2_ws/linkerhand/linker_hand_python_sdk"
@@ -62,11 +62,13 @@ class RightLinkerHandNode(Node):
                                  self._input_timeout_s))):
             raise ValueError("LinkerHand topics and rates/timeouts must be valid")
 
+        self._toggle = LinkerHandToggleLogic()
         self._target = None
+        self._pending_target = None
         self._actual = None
         self._fault_codes = None
-        self._last_sent = None
         self._last_input_s = None
+        self._input_stale = False
         self._invalid_input_count = 0
         self._input_error = ""
         self._communication_error = ""
@@ -101,18 +103,36 @@ class RightLinkerHandNode(Node):
 
     def _on_inputs(self, message):
         value = float(message.press_index)
-        self._last_input_s = time.monotonic()
+        now = time.monotonic()
+        if (self._last_input_s is not None and
+                now - self._last_input_s > self._input_timeout_s):
+            self._mark_input_lost()
+        self._last_input_s = now
+        self._input_stale = False
         if math.isfinite(value):
             self._input_error = ""
         else:
             self._invalid_input_count += 1
-            self._input_error = "non-finite press_index treated as 0.0"
+            self._input_error = "non-finite press_index ignored; valid release required"
             self._warn_limited(self._input_error)
-        self._target = target_pose(value)
+            self._pending_target = None
+        command = self._toggle.update(value)
+        if command is not None:
+            self._target = command
+            self._pending_target = list(command)
+
+    def _mark_input_lost(self):
+        if not self._input_stale:
+            self._toggle.input_lost()
+            self._pending_target = None
+            self._input_stale = True
 
     def _input_fresh(self):
-        return (self._last_input_s is not None and
-                time.monotonic() - self._last_input_s <= self._input_timeout_s)
+        fresh = (self._last_input_s is not None and
+                 time.monotonic() - self._last_input_s <= self._input_timeout_s)
+        if not fresh and self._last_input_s is not None:
+            self._mark_input_lost()
+        return fresh
 
     def _communication_failed(self, operation, exc):
         self._communication_ok = False
@@ -120,15 +140,18 @@ class RightLinkerHandNode(Node):
         self._warn_limited(self._communication_error)
 
     def _send_target(self):
-        if not self._input_fresh() or self._target is None or self._dry_run:
+        if not self._input_fresh() or self._pending_target is None:
+            return
+        if self._dry_run:
+            self._pending_target = None
             return
         if not self._communication_ok or self._fault_codes is None or any(self._fault_codes):
+            self._pending_target = None
             return
-        if self._target == self._last_sent:
-            return
+        pose = self._pending_target
+        self._pending_target = None
         try:
-            self._hand.finger_move(pose=list(self._target))
-            self._last_sent = list(self._target)
+            self._hand.finger_move(pose=list(pose))
             self._communication_ok = True
             self._communication_error = ""
         except Exception as exc:
@@ -164,6 +187,10 @@ class RightLinkerHandNode(Node):
             "stamp": {"sec": nanoseconds // 1_000_000_000,
                       "nanosec": nanoseconds % 1_000_000_000},
             "target": self._target,
+            "trigger_value": self._toggle.trigger_value,
+            "trigger_pressed": self._toggle.trigger_pressed,
+            "trigger_armed": self._toggle.trigger_armed,
+            "hand_toggle_state": self._toggle.hand_toggle_state,
             "actual": self._actual,
             "fault_codes": self._fault_codes,
             "communication_ok": self._communication_ok,

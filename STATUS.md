@@ -10,14 +10,15 @@
 真实 Quest live quaternion/preview 验证，以及实际右 RM65 的首次人工姿态跟随测试。
 当前正式姿态参数恢复为 rotation_scale=1.0、90 deg/s、0.01 rad/cycle、90 deg
 单次 Grip anchor 上限。右手灵巧手 Quest 控制的软件版本已加入独立分支，
-真机动作尚未验证；左臂其余验收、双臂和完整安全验收仍未完成。
+SDK 连接、真实反馈和张合方向已由现场操作者人工确认；本版 toggle 和双臂同场集成尚未验证；左臂其余验收、双臂和完整安全验收仍未完成。
 
-## Right LinkerHand L7 Quest trigger control (software checkpoint)
+## Right LinkerHand L7 Quest trigger toggle (software checkpoint)
 
-- Branch `feat/right-linkerhand-quest` starts at left teleop HEAD `57e919fe57818865b179be0d4ac2b57e0714fb9e`; it uses a separate worktree and leaves existing right/left hardware YAML modifications in the left worktree untouched.
-- An independent `/right_linkerhand` process subscribes to `/q2r_right_hand_inputs.press_index`. Released `0.0` requests `[255,0,255,255,255,255,255]`; fully pressed `1.0` requests `[0,0,0,0,0,0,255]`; intermediate values interpolate. `press_middle` Grip, `button_upper` B/Home, and the arm adapter are unchanged.
-- `right_quest_teleop.launch.py` defaults `start_linkerhand:=false`; explicit `true` in `mode:=dry_run` provides status/target preview without SDK connection, and explicit `true` in `mode:=hardware` selects the onsite right-L7 RealMan RS485 SDK. `/right/linkerhand/status` publishes stamped JSON with target, measured joints, raw faults, communication and input freshness. SDK force/current readings are not used.
-- Four-package build and adapter regression passed in the isolated domain: 17 CTest entries and 175 reported tests, 0 errors/failures/skips. A real dry-run launch check observed default-off and opt-in target/status behavior with zero right RM65 command publishers. Details are in `docs/progress/right-linkerhand-quest.md`. No LinkerHand hardware command, real grasp, knife test, or right RM65 motion was initiated for this checkpoint.
+- Branch `feat/right-linkerhand-quest` is based on left teleop SHA `57e919fe57818865b179be0d4ac2b57e0714fb9e`; separate left-worktree YAML edits and `/home/lh/robot` were untouched.
+- Independent `/right_linkerhand` subscribes only to right `press_index`: press `>=0.60`, release `<=0.40`, hysteresis between. Each armed rising edge toggles CLOSED `[73,0,0,0,0,0,156]` then OPEN `[73,0,255,255,255,255,156]`. Startup has logical OPEN and `target=null`, with no automatic hand motion. Stale/non-finite input holds position and requires a valid release before rearming. Grip and B/Home are unchanged.
+- Right launch defaults `start_linkerhand:=false`. Dry-run uses no SDK. Hardware mode uses the onsite right-L7 RealMan RS485 SDK and reads feedback/faults before any command. Status includes trigger value/semantic/armed state, hand toggle state, target/actual, raw fault codes, communication and input freshness.
+- The onsite operator reports standalone SDK connection, real feedback, and open/close direction passed. The current toggle revision has software validation only. Dual RM65 + right LinkerHand coexistence and cross-control tests were deferred by the operator; no live command was sent this revision. Quest/TCP dropouts remain open; grasp force and knife handling remain unverified.
+- Four-package build passed. Isolated adapter regression passed 17/17 CTest entries and 177/177 reported tests (toggle logic 9, ROS node 8, launch contract 2), with zero failures/skips. Isolated real-launch dry-run smoke confirmed hand off/on and two toggles without a right-arm movep publisher. Details are in `docs/progress/right-linkerhand-quest.md`.
 
 ## Left RM65 Quest teleop (+Z and −Y directions observed; XYZ incomplete)
 
@@ -140,7 +141,7 @@ field-tested tuning value / pending workspace and stopping-margin review，不�
 - 真实 RM65 orientation 的定量验收：逐轴精确角度、tracking error、overshoot、
   stopping distance、长时间静止抖动和更长时间连续运行记录。
 - 更系统的组合 rotation 与 translation + rotation 定量验证。
-- 右 L7 真机张合、反馈与异常恢复验收；左夹爪仍未接入。
+- 右 L7 的本版 Quest toggle、双 RM65 同场可用性、SDK/右 driver 共存与异常恢复验收；SDK 单独连接、反馈和张合方向已由现场操作者确认，左夹爪仍未接入。
 - 左臂 −X 真机映射、故障停机余量、其他轴和双臂真机验收。
 - 全部真实断流场景和长期网络抖动。
 - 真机 deadman 停止余量的系统化验收。

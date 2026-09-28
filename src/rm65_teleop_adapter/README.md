@@ -198,12 +198,17 @@ publish `/right/linkerhand/status` (`std_msgs/msg/String` JSON). In
 tool RS485 port and writes changed targets at no more than 20 Hz. The SDK
 instance belongs only to this process.
 
-`press_index=0.0` maps to `[255,0,255,255,255,255,255]` (open), `1.0`
-to `[0,0,0,0,0,0,255]` (closed), with per-axis interpolation. Non-finite
-input maps to open; stale input suspends writes. The status JSON contains
-`stamp`, seven-axis `target`/`actual`, raw `fault_codes`, `communication_ok`,
-`input_fresh`, `dry_run`, `state`, and `error`. Hardware hand movement remains
-unvalidated; use the launch's dry-run mode for isolated software checks.
+`press_index >= 0.60` means pressed and `<= 0.40` means released.
+Each armed released-to-pressed edge toggles between CLOSED
+`[73,0,0,0,0,0,156]` (first press) and OPEN
+`[73,0,255,255,255,255,156]` (second press). Startup does not send a hand
+command; status `target` is null until the first press. Stale or non-finite
+input holds the hand and requires a valid release before the next toggle.
+Status JSON contains `stamp`, `trigger_value`, `trigger_pressed`,
+`trigger_armed`, `hand_toggle_state`, seven-axis `target`/`actual`, raw
+`fault_codes`, `communication_ok`, `input_fresh`, `dry_run`, `state`, and
+`error`. Standalone SDK hardware operation was reported validated onsite;
+the current toggle and dual-arm coexistence are pending hardware validation.
 
 The adapter status JSON publishes `deadman_pressed` and
 `deadman_source="press_middle"`. The read-only monitor displays this semantic

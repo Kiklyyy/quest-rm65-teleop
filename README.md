@@ -2,7 +2,7 @@
 
 这是一个用于两位同学及各自 GPT/Codex 协作的私有源码快照仓库。它汇集当前实验室实际使用的 Quest2ROS2、`quest2ros` 自定义消息包和带现场补丁的 ROS TCP Endpoint，并记录接口、验证状态和分工。
 
-> **当前状态：** 右手 Quest → 右 RM65 的 XYZ、orientation/6DoF、Grip deadman 和 Home 已由现场操作者完成真机验证；Home 的运动中松开 B 停止与取消状态也已验证。右手 LinkerHand L7 的食指扳机控制已完成软件集成，真机张合尚未验证。Quest/TCP 输入仍会偶发超过 200 ms 的同步断流，触发 watchdog/rearm，稳定性问题尚未解决。左臂其余功能和双臂控制尚未完成验收。任何 push 都只是代码同步，不代表部署、重启或启用机器人。
+> **当前状态：** 右手 Quest → 右 RM65 的 XYZ、orientation/6DoF、Grip deadman 和 Home 已由现场操作者完成真机验证；Home 的运动中松开 B 停止与取消状态也已验证。右手 LinkerHand L7 的食指扳机 toggle 已完成软件集成；现场操作者已单独验证 SDK 连接、真实反馈与张合方向，双臂同场集成待测。Quest/TCP 输入仍会偶发超过 200 ms 的同步断流，触发 watchdog/rearm，稳定性问题尚未解决。左臂其余功能和双臂控制尚未完成验收。任何 push 都只是代码同步，不代表部署、重启或启用机器人。
 
 ## 目录结构
 
@@ -19,11 +19,12 @@
 
 ## 右手 LinkerHand L7 软件预览
 
-右臂 launch 增加 `start_linkerhand:=true` 显式入口。默认 `false`；在
-`mode:=dry_run` 下，该节点只订阅 `/q2r_right_hand_inputs.press_index`
-并发布 `/right/linkerhand/status`，不导入或连接 SDK。扳机松开对应
-`[255,0,255,255,255,255,255]`，全压对应 `[0,0,0,0,0,0,255]`，
-中间线性插值。软件预览命令：
+右臂 launch 增加 `start_linkerhand:=true` 显式入口，默认 `false`。
+`mode:=dry_run` 下节点订阅 `/q2r_right_hand_inputs.press_index` 并发布
+`/right/linkerhand/status`，不连接 SDK。阈值为按下 `>=0.60`、松开
+`<=0.40`；每次有效上升沿在 CLOSED `[73,0,0,0,0,0,156]` 与 OPEN
+`[73,0,255,255,255,255,156]` 之间切换。启动不发手部运动命令；输入断流
+或 NaN/Inf 后须先松开再按下。软件预览命令：
 
 ```bash
 source /opt/ros/humble/setup.bash

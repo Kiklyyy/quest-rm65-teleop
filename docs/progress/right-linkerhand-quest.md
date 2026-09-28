@@ -1,29 +1,29 @@
-# Right LinkerHand L7 Quest index control
+# Right LinkerHand L7 Quest index toggle
 
-## Scope and Git baseline
+## Baseline and scope
 
-- Development branch: `feat/right-linkerhand-quest`, independent Ubuntu worktree `/home/lh/quest2ros2_ws/.worktrees/right-linkerhand-quest`.
-- Base read from `feat/left-rm65-teleop` at `57e919fe57818865b179be0d4ac2b57e0714fb9e` on 2026-09-28. The source left worktree had existing edits to `hardware.yaml` and `left_hardware.yaml`; these were neither copied nor changed.
-- A separate dirty `feat/right-linkerhand` worktree already existed and was left untouched. `/home/lh/robot` was only sourced/read, never edited.
+- Branch: `feat/right-linkerhand-quest`, based on `feat/left-rm65-teleop` SHA `57e919fe57818865b179be0d4ac2b57e0714fb9e`.
+- Independent `/right_linkerhand` Python node in `rm65_teleop_adapter`; right/left arm adapter, Grip, Home, Quest message and `/home/lh/robot` are unchanged.
+- The onsite SDK `O7_JOINT_KEYS` order was checked: `Thumb_Pitch, Thumb_Yaw, Index_Pitch, Middle_Pitch, Ring_Pitch, Little_Pitch, Thumb_Roll`.
 
-## Design and onsite SDK facts
+## Interface and behavior
 
-- The independent `/right_linkerhand` Python process is installed by `rm65_teleop_adapter`; no arm adapter C++ state, Home, Grip, Quest message, driver, or hardware YAML is changed.
-- Subscribes to `/q2r_right_hand_inputs` (`quest2ros/msg/OVR2ROSInputs`), using only `press_index`. Open `[255,0,255,255,255,255,255]` at 0.0 and closed `[0,0,0,0,0,0,255]` at 1.0 are linearly interpolated per axis. Finite out-of-range input is clamped; NaN/Inf maps to open with a diagnostic count and warning. Fixed axes 1 and 6 remain 0 and 255.
-- The onsite `O7_JOINT_KEYS` order is `Thumb_Pitch, Thumb_Yaw, Index_Pitch, Middle_Pitch, Ring_Pitch, Little_Pitch, Thumb_Roll`. The GUI reference poses are used verbatim; the SDK's `L7_positions.yaml` right-open preset has a different yaw value and is not used.
-- Hardware mode imports `/home/lh/quest2ros2_ws/linkerhand/linker_hand_python_sdk` and calls `LinkerHandApi(hand_type="right", hand_joint="L7", modbus="RML")`. The explicit RML transport prevents a fallback to CAN. This onsite SDK contains uncommitted RealMan API2 tool-RS485 adaptation, including `realman_modbus.py`; it is not copied into this repository. SDK initialization configures tool voltage and Modbus mode through the right RM65 controller. The SDK process owns the hand connection and closes it on shutdown.
-- `right_quest_teleop.launch.py` defaults `start_linkerhand:=false`. With `true`, `mode:=dry_run` maps input and reports status without importing SDK or touching hardware; `mode:=hardware` connects SDK and may write. Invalid dry-run/write gate combinations are rejected. A 20 Hz timer writes changed targets only while input is fresh and initial fault/feedback is available. Feedback and raw fault codes are read separately at 2 Hz. Stale input suspends writes; fault codes or a communication failure also suspend writes. No force/current control is used.
-- `/right/linkerhand/status` is `std_msgs/msg/String` JSON with ROS `stamp`, seven-axis `target` and `actual`, seven raw `fault_codes`, `communication_ok`, `input_fresh`, `dry_run`, `state`, `error`, and `invalid_input_count`. In dry-run, `actual` and fault codes are null and `communication_ok=false` because no SDK is connected. Target is null before the first Quest input. `INPUT_STALE` means no new write while the latest input is old; it is not an arm Home/deadman state.
+- Subscribe: `/q2r_right_hand_inputs` (`quest2ros/msg/OVR2ROSInputs`), field `press_index` only.
+- `press_index >= 0.60` is PRESSED; `<= 0.40` is RELEASED; the band retains the previous semantic state. Each armed RELEASED → PRESSED edge toggles once. Holding or releasing the trigger causes no hand command.
+- Startup logical state is `OPEN`, first press is armed, and `target=null`. Hardware startup reads `get_state()` and `get_fault()` before accepting input; it never sends an automatic OPEN command.
+- First press sends CLOSED `[73,0,0,0,0,0,156]`; second sends OPEN `[73,0,255,255,255,255,156]`; subsequent presses alternate. These are canonical raw SDK joint targets from the onsite GUI.
+- Stale inputs hold the last commanded position and disarm toggle. On reconnect, a valid RELEASED sample is required before the next press can toggle. NaN/Inf behaves the same way, increments the diagnostic counter, and never commands OPEN.
+- Publish: `/right/linkerhand/status` (`std_msgs/msg/String` JSON): ROS `stamp`, `trigger_value`, `trigger_pressed`, `trigger_armed`, `hand_toggle_state` (`OPEN`/`CLOSED`), `target`, `actual`, `fault_codes`, `communication_ok`, `input_fresh`, `dry_run`, `state`, `error`, `invalid_input_count`. `target=null` before first command; dry-run has null actual/faults and `communication_ok=false`.
+- `start_linkerhand:=false` is the right launch default. Explicit `true` with `mode:=dry_run` does not import/connect SDK. Explicit `true` with `mode:=hardware` uses `LinkerHandApi(hand_type="right", hand_joint="L7", modbus="RML")` from `/home/lh/quest2ros2_ws/linkerhand/linker_hand_python_sdk`. It retains the onsite RealMan API2 tool-RS485 transport and reads position/faults. The SDK itself is not modified or copied. Fault/communication gating and warning throttling remain; force/current are not used.
 
 ## Software verification
 
-- Mapping tests were run RED before implementation (missing module, 9 expected failures), then GREEN (9/9). Node tests used real ROS messages on isolated `ROS_DOMAIN_ID=143`, localhost-only, with in-memory SDK stand-ins; launch tests checked the default-off gate and mode mapping.
-- A fault-before-first-write test found an initial-write gap. The node now reads feedback and fault codes before it can write, and blocks writes while fault/communication state is unknown or unhealthy.
-- Four ROS packages (`quest2ros`, `ros_tcp_endpoint`, `q2r2_bringup`, `rm65_teleop_adapter`) built with `/usr/bin/colcon build --symlink-install --packages-select ...` and system Python 3.10 in this independent worktree. An incremental adapter build after the fault guard passed. `colcon test --packages-select rm65_teleop_adapter` with `ROS_DOMAIN_ID=143`, `ROS_LOCALHOST_ONLY=1`, and `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` passed all 17 CTest entries. `colcon test-result --test-result-base build --all --verbose` reported **175 tests, 0 errors, 0 failures, 0 skipped** (including CTest wrapper records). The new mapping tests were 9/9, ROS node tests 6/6, and launch contract tests 2/2; the rest include right Home/Grip/orientation and left adapter regressions.
-- A real `ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py` smoke used only `mode:=dry_run`, `start_tcp:=false`, `start_bridge:=false`, `start_status:=false`, `use_rviz:=false`, and isolated domain 143. With `start_linkerhand:=false`, no hand node or hand-status publisher appeared. With `start_linkerhand:=true`, the hand node appeared and a synthetic `press_index=0.5` produced status target `[128,0,128,128,128,128,255]`, `dry_run=true`, `actual=null`; both cases had zero publishers on `/right/rm_driver/movep_canfd_cmd`. Both launch process groups were terminated by their exact PIDs after observation, and the isolated node graph was empty afterward.
-- No SDK object was instantiated in any test that ran the launch. No LinkerHand hardware command, real grasp, knife test, RM65 motion, or domain-42 synthetic input was performed.
+- Run `/usr/bin/colcon build --symlink-install --packages-select quest2ros ros_tcp_endpoint q2r2_bringup rm65_teleop_adapter` from this worktree after sourcing ROS, `/home/lh/robot/install`, and this worktree.
+- Run isolated tests with `ROS_DOMAIN_ID=143`, `ROS_LOCALHOST_ONLY=1`, and `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`: logic tests, ROS node tests with fake SDK and synthetic Quest Inputs, launch tests, and adapter regression.
+- Build: four packages passed (`quest2ros`, `ros_tcp_endpoint`, `q2r2_bringup`, `rm65_teleop_adapter`). Isolated adapter regression: 17/17 CTest entries and 177/177 reported tests, zero failures/skips. Within these, toggle logic 9/9, ROS node 8/8, launch contract 2/2. Grip, Home, and left adapter regression tests passed.
+- An isolated real `ros2 launch` dry-run smoke checked explicit hand off/on: off had no hand node/status; on started `/right_linkerhand` and published startup `target=null`, first press CLOSED, release held CLOSED, second press OPEN. No right RM65 movep publisher appeared. Both launch groups were stopped afterward. No domain-42 input or live robot command was part of this checkpoint.
 
-## Launch for a software preview
+## Launch
 
 ```bash
 conda deactivate 2>/dev/null || true
@@ -36,10 +36,8 @@ ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
   start_bridge:=false start_status:=false use_rviz:=false
 ```
 
-For a real Quest source, the normal right launch may supply TCP and bridge. Only after onsite single-owner and clearance checks should an operator use `mode:=hardware start_linkerhand:=true`; this was **not** run in this task.
+## Hardware evidence and next step
 
-## Remaining validation
-
-- Confirm onsite SDK and RealMan API2 can share the right controller session with the existing RM65 driver without resource contention.
-- Under onsite supervision, check open/mid/close direction and actual positions on the real right L7 with a clear, unloaded hand. Record response, fault codes, and stop behavior before any object handling. Do not infer knife handling or force-limited grasp from the software tests.
-- Known Quest/TCP synchronous dropouts remain open. The hand node's stale-input behavior holds the last target; a resumed fresh input resumes mapping. This does not solve network stability.
+- The operator reports that the onsite SDK connection, real feedback, and open/close direction have already been manually validated. This software change has **not** been tested against the real hand.
+- The operator deferred the requested dual RM65 + right LinkerHand integration session until later. RM driver/SDK coexistence, simultaneous availability, and cross-control isolation remain unverified. No Home or knife task is included in that session.
+- Quest/TCP dropouts remain an open issue; arm watchdog and hand input timeout are unchanged. Grasp force and knife handling are unverified.
