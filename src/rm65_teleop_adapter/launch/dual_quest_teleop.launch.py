@@ -1,5 +1,8 @@
 """Bring up both RM65 arms, both Quest adapters, and optional right O7 hand."""
 
+import importlib.util
+import os
+import socket
 from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
@@ -31,6 +34,75 @@ def _validate_arguments(context):
             raise RuntimeError(
                 "linkerhand_connect_only requires mode:=hardware and start_linkerhand:=true"
             )
+    return []
+
+
+def _running_executables(names):
+    """Find existing hardware command processes before creating another stack."""
+    found = {}
+    for entry in os.scandir("/proc"):
+        if not entry.name.isdigit():
+            continue
+        try:
+            executable = os.readlink(f"/proc/{entry.name}/exe")
+        except OSError:  # A process may exit or be inaccessible while scanning.
+            continue
+        name = os.path.basename(executable).removesuffix(" (deleted)")
+        if name in names:
+            found.setdefault(name, []).append(int(entry.name))
+    return found
+
+
+def _check_tcp_port_free(port=10000):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            listener.bind(("0.0.0.0", port))
+        except OSError as exc:
+            raise RuntimeError(
+                f"ROS TCP port {port} is already in use; stop the existing endpoint "
+                "before starting another dual Quest stack"
+            ) from exc
+
+
+def _preflight(context):
+    """Validate the complete stack before any driver, TCP, or adapter starts."""
+    _validate_arguments(context)
+    for name in (
+        "start_drivers", "start_controls", "start_tcp", "start_bridges",
+        "start_status", "start_linkerhand", "linkerhand_connect_only",
+        "use_right_rviz", "use_left_rviz",
+    ):
+        _enabled(context, name)
+    package_share = Path(get_package_share_directory("rm65_teleop_adapter"))
+    for child in ("right_quest_teleop.launch.py", "left_quest_teleop.launch.py"):
+        if not (package_share / "launch" / child).is_file():
+            raise RuntimeError(f"missing dual Quest child launch: {child}")
+
+    names = {"rm65_teleop_adapter_node"}
+    if LaunchConfiguration("mode").perform(context) == "hardware":
+        left_launch = package_share / "launch" / "left_quest_teleop.launch.py"
+        spec = importlib.util.spec_from_file_location("left_quest_preflight", left_launch)
+        left = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(left)
+        left._validate_hardware_config(package_share / "config" / "hardware.yaml", package_share)
+        if LaunchConfiguration("motion_profile").perform(context) == "normal":
+            left._normal_overlay(package_share)
+        if _enabled(context, "start_drivers"):
+            names.add("rm_driver")
+        if _enabled(context, "start_controls"):
+            names.add("rm_control")
+    else:
+        for name in ("dry_run.yaml", "left_dry_run.yaml"):
+            if not (package_share / "config" / name).is_file():
+                raise RuntimeError(f"missing dual Quest dry-run config: {name}")
+
+    existing = _running_executables(names)
+    if existing:
+        details = ", ".join(f"{name} PID {pids}" for name, pids in sorted(existing.items()))
+        raise RuntimeError(f"dual Quest command process already running: {details}")
+    if _enabled(context, "start_tcp"):
+        _check_tcp_port_free()
     return []
 
 
@@ -105,7 +177,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument("use_right_rviz", default_value="false"),
         DeclareLaunchArgument("use_left_rviz", default_value="false"),
-        OpaqueFunction(function=_validate_arguments),
+        OpaqueFunction(function=_preflight),
         OpaqueFunction(function=_hardware_stack),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(str(right_launch)),

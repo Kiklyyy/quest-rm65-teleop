@@ -79,3 +79,22 @@ with the hand node enabled.
   ROS test file passes 13/13 tests after this change.
 - No real driver, controller, Quest endpoint, hand SDK connection, command or
   robot motion was started while implementing this checkpoint.
+
+## 2026-09-28 dual launch startup preflight
+
+- The parent previously started RM driver/control and the right Quest child
+  before the left child checked its Home configuration. A left Home mismatch
+  could therefore abort launch after other children had already started;
+  the observed orphan TCP process then prevented the next Quest connection.
+- The parent now checks both child launch files and the left hardware
+  configuration/profile and boolean launch arguments before starting any process.
+  It also refuses to start a second adapter, an enabled duplicate driver/control,
+  or a second listener on TCP port 10000. Existing driver/control can still be
+  reused by explicitly setting their startup switches to false. It does not
+  terminate existing processes.
+- Focused launch tests passed 11/11, including the former left Home mismatch,
+  duplicate process and busy TCP port cases. Adapter package build passed. An
+  isolated-domain dry-run started both adapters and exited with no residual
+  control processes or TCP listener.
+  No RM driver, controller, Quest endpoint or robot motion was started for
+  this fix. Full hardware bringup remains for the onsite operator.

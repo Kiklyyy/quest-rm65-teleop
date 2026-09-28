@@ -32,6 +32,11 @@ use_left_rviz:=true|false               # 默认 false
 ROS TCP endpoint；左子 launch 始终收到 `start_tcp:=false`。两侧 target bridge、
 adapter、monitor 和 RViz 使用既有独立节点名、topic 与参数。
 
+父 launch 在创建任何子进程前验证左右硬件参数和共享 profile，并检查拟启动的
+driver、control、adapter 是否已有运行实例，以及 TCP 10000 端口是否空闲。
+检查失败时整套启动直接报错，不会先启动部分节点；若要复用外部 driver/control，
+分别使用 `start_drivers:=false` / `start_controls:=false`。
+
 右 O7 保持显式 opt-in。`start_linkerhand:=true` 才启动 `/right_linkerhand`；
 `linkerhand_connect_only:=true` 还必须同时满足 `mode:=hardware` 和
 `start_linkerhand:=true`。已观察到的“RM driver 与第二 API2/工具 RS485 连接共存时，
