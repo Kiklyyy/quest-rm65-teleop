@@ -201,6 +201,51 @@ def test_existing_hand_fault_blocks_first_motion(ros):
         harness.close()
 
 
+def test_connect_only_initializes_and_polls_but_never_moves(ros):
+    fake = FakeHand()
+    calls = []
+
+    def factory(**kwargs):
+        calls.append(kwargs)
+        return fake
+
+    node = RightLinkerHandNode(
+        hand_factory=factory,
+        parameter_overrides=[
+            Parameter("dry_run", value=False),
+            Parameter("hardware_write_enabled", value=True),
+            Parameter("connect_only", value=True),
+            Parameter("feedback_rate_hz", value=20.0),
+        ])
+    harness = Harness(node)
+    try:
+        assert calls == [{"hand_type": "right", "hand_joint": "L7", "modbus": "RML"}]
+        assert fake.reads[:2] == ["state", "fault"]
+        assert fake.writes == []
+        initial = harness.statuses[-1]
+        assert initial["connect_only"] is True
+        assert initial["state"] == "CONNECT_ONLY"
+        assert initial["target"] is None
+        harness.send(1.0, lambda s: s["connect_only"])
+        harness.send(0.0, lambda s: s["connect_only"])
+        harness.send(1.0, lambda s: s["connect_only"])
+        harness.settle()
+        assert fake.writes == []
+        assert harness.statuses[-1]["target"] is None
+        assert fake.reads.count("state") >= 2
+        assert fake.reads.count("fault") >= 2
+    finally:
+        harness.close()
+    assert fake.closed
+
+
+def test_connect_only_rejects_dry_run(ros):
+    with pytest.raises(ValueError, match="connect_only"):
+        RightLinkerHandNode(parameter_overrides=[
+            Parameter("connect_only", value=True),
+        ])
+
+
 def test_hardware_gate_rejects_inconsistent_parameters(ros):
     with pytest.raises(ValueError, match="hardware_write_enabled"):
         RightLinkerHandNode(parameter_overrides=[

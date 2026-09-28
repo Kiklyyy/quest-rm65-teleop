@@ -42,10 +42,13 @@ class RightLinkerHandNode(Node):
         super().__init__("right_linkerhand", parameter_overrides=parameter_overrides)
         self._dry_run = self.declare_parameter("dry_run", True).value
         write_enabled = self.declare_parameter("hardware_write_enabled", False).value
+        self._connect_only = bool(self.declare_parameter("connect_only", False).value)
         if bool(self._dry_run) == bool(write_enabled):
             raise ValueError(
                 "dry_run and hardware_write_enabled must be opposite; "
                 "hardware write requires dry_run=false and hardware_write_enabled=true")
+        if self._connect_only and self._dry_run:
+            raise ValueError("connect_only requires hardware mode to initialize the SDK")
 
         sdk_path = self.declare_parameter("sdk_path", DEFAULT_SDK_PATH).value
         inputs_topic = self.declare_parameter(
@@ -102,6 +105,8 @@ class RightLinkerHandNode(Node):
             self._last_warning_s = now
 
     def _on_inputs(self, message):
+        if self._connect_only:
+            return
         value = float(message.press_index)
         now = time.monotonic()
         if (self._last_input_s is not None and
@@ -140,6 +145,8 @@ class RightLinkerHandNode(Node):
         self._warn_limited(self._communication_error)
 
     def _send_target(self):
+        if self._connect_only:
+            return
         if not self._input_fresh() or self._pending_target is None:
             return
         if self._dry_run:
@@ -172,7 +179,14 @@ class RightLinkerHandNode(Node):
 
     def _publish_status(self):
         fresh = self._input_fresh()
-        if not fresh:
+        if self._connect_only:
+            if not self._communication_ok:
+                state = "COMM_ERROR"
+            elif self._fault_codes is not None and any(self._fault_codes):
+                state = "HAND_FAULT"
+            else:
+                state = "CONNECT_ONLY"
+        elif not fresh:
             state = "INPUT_STALE"
         elif self._dry_run:
             state = "DRY_RUN"
@@ -196,6 +210,7 @@ class RightLinkerHandNode(Node):
             "communication_ok": self._communication_ok,
             "input_fresh": fresh,
             "dry_run": bool(self._dry_run),
+            "connect_only": self._connect_only,
             "state": state,
             "error": self._communication_error or self._input_error,
             "invalid_input_count": self._invalid_input_count,

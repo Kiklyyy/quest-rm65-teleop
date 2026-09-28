@@ -39,5 +39,43 @@ ros2 launch rm65_teleop_adapter right_quest_teleop.launch.py \
 ## Hardware evidence and next step
 
 - The operator reports that the onsite SDK connection, real feedback, and open/close direction have already been manually validated. This software change has **not** been tested against the real hand.
-- The operator deferred the requested dual RM65 + right LinkerHand integration session until later. RM driver/SDK coexistence, simultaneous availability, and cross-control isolation remain unverified. No Home or knife task is included in that session.
+- The operator later completed a right-side A/B hardware comparison: `start_linkerhand:=false` made every observed right Grip re-anchor normally, without an old-position jump; `start_linkerhand:=true` made the right arm jump toward an old position on Grip press after the SDK connected. This is a confirmed correlation, not yet an identified API call or controller-state root cause. Dual-arm availability and cross-control isolation remain unverified. No Home or knife task was tested.
 - Quest/TCP dropouts remain an open issue; arm watchdog and hand input timeout are unchanged. Grasp force and knife handling are unverified.
+
+## Right RM driver / LinkerHand coexistence diagnosis
+
+The right adapter's existing `ARMED → ACTIVE` logic captures the latest UDP robot pose as `robot_anchor`, assigns `last_command=robot_anchor`, and emits that as its first command. `test_adapter_logic.cpp` already checks this for initial press and repress. A new `first_command_anchor` log records the live anchor, first outgoing TCP pose/quaternion, and translation difference at every Grip activation without changing the command algorithm.
+
+The actual onsite SDK constructor path is:
+
+1. `LinkerHandApi(right,L7,RML)` loads `setting.yaml`, resolves `realman://169.254.128.19:8080` (tool Modbus port 1, 115200 baud, timeout 3, voltage 3), and creates `LinkerHandL7RS485`.
+2. `RealmanModbusClient` creates `RealmanArmClient(auto_connect=True)`; its API2 layer creates `RoboticArm(RM_TRIPLE_MODE_E)` and calls `rm_create_robot_arm(169.254.128.19,8080)` on a **second** controller connection.
+3. It calls `rm_set_tool_voltage(3)` and `rm_set_modbus_mode(1,115200,3)`.
+4. The hand constructor reads L7 version through `rm_read_multiple_input_registers` (input registers 153–158); serial number is a local placeholder for this L7 implementation.
+5. The ROS node immediately reads position registers 0–6 and fault registers 28–34, then continues feedback polling. A later `finger_move` writes seven holding registers starting at 0 through `rm_write_registers`. Shutdown invokes `rm_delete_robot_arm` on that second connection.
+
+No explicit arm `movej`, `movep`, `move_stop`, follow, trajectory-mode, CANFD-mode, UDP-setting, or pose-setting call appears in this SDK constructor/write path. The controller's internal effects of second connection, tool voltage, or Modbus configuration remain unknown until staged hardware observations.
+
+By comparison, `/home/lh/robot` `rm_driver` (read only) calls `rm_init(RM_TRIPLE_MODE_E)`, `rm_create_robot_arm`, and `rm_set_realtime_push` for UDP feedback. Its `trajectory_mode=0` and `radio=0` are local parameters passed with each `rm_movep_canfd`; `follow` comes from the command message. It does not separately set these motion modes at startup. Existing driver Modbus topics could in principle reuse its handle, but the three-generation `Write_Modbus_RTU_Registers_Callback` allocates `int hold_mul_data[10]` and copies `2 × num` byte values into it. An L7 seven-register write would copy 14 values, exceeding that buffer. The current driver topic is therefore not a safe unmodified Option B for L7 bulk writes, and `/home/lh/robot` was not edited.
+
+The currently available API2 tool-register methods require a connected `RoboticArm` handle; no verified tool-only connection path was found, so merely replacing the high-level wrapper with a smaller wrapper would still create a second controller connection. Reusing the installed driver's write topic is blocked by the buffer issue above. Restoring controller modes after SDK initialization would be speculative without B/C state evidence and is not implemented.
+
+`right_linkerhand_node` now accepts `connect_only:=true` in hardware mode, or `linkerhand_connect_only:=true` through the right launch. It still constructs the onsite SDK and polls `get_state/get_fault`, but ignores Quest input and never calls `finger_move`; status reports `CONNECT_ONLY`, `target=null`, and `connect_only=true`. For the first coexistence stage, start this executable **alone**, without a teleop adapter or Quest motion:
+
+```bash
+ros2 run rm65_teleop_adapter right_linkerhand_node --ros-args \
+  -p dry_run:=false -p hardware_write_enabled:=true -p connect_only:=true
+```
+
+Before any hardware stage, the onsite operator must confirm a stationary right arm, clear path, and reachable stop. Capture an A/B/C comparison with the existing right driver as the sole arm controller client plus the optional SDK: A driver only; B driver + `connect_only`; C after exactly one hand write. In each stage record `/right/rm_driver/udp_arm_position` and `/right/joint_states` freshness/pose, `/right/linkerhand/status` communication/faults, driver `trajectory_mode`/`radio` parameters, `/right/rm_driver/get_realtime_push_result` if queried through the driver's existing connection, controller errors, and physical motion. Tool voltage, tool RS485 mode, and internal CANFD planner state lack a confirmed read-only path on this installed three-generation driver; mark them unavailable rather than opening another API2 client merely to inspect them.
+
+| Field | A: driver only | B: SDK connect-only | C: after hand write |
+|---|---|---|---|
+| TCP/joint feedback freshness and physical stationary state | pending onsite | pending onsite | pending onsite |
+| Controller UDP configuration and error | pending onsite | pending onsite | pending onsite |
+| Tool voltage / RS485 / internal planner mode | readback path unconfirmed | readback path unconfirmed | readback path unconfirmed |
+| Hand feedback/faults | no hand node | pending onsite | pending onsite |
+
+The operator was unavailable for this software diagnostic checkpoint. No new controller connection, hand write, Grip test, Home action, or left-arm session was started. Connect-only and backend-call-sequence tests establish software behavior; they cannot establish physical coexistence or the exact conflicting controller state. Do not apply a guessed follow/trajectory-mode reset. If B reproduces the jump, bisect connection vs voltage vs Modbus configuration with operator-supervised single-variable probes; if only C reproduces it, inspect the register-write path and controller trace. Repeat the original Grip A/B after a fix before claiming no-jump PASS.
+
+Software result for this checkpoint: four affected packages built in independent `/tmp/right-linkerhand-coexistence-{build,install,log}` paths, without replacing the original worktree install. Isolated domain 143 adapter regression passed 18/18 CTest entries and 183/183 reported tests (0 errors/failures/skips): LinkerHand logic 9/9, ROS node 10/10, launch contract 2/2, onsite SDK transport/constructor mock 3/3, plus unchanged Grip/Home and left adapter regressions. The existing off/on real-launch dry-run smoke also passed in domain 143 with no RM movep publisher. A user-owned hardware launch parent PID 286650 was found during this work, with no domain-42 nodes, driver/hand children, or TCP 10000 listener at the inspection time; it was left untouched at the user's explicit request.

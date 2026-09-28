@@ -197,6 +197,11 @@ publish `/right/linkerhand/status` (`std_msgs/msg/String` JSON). In
 `mode:=hardware`, it instantiates the onsite right-L7 SDK through the RM65
 tool RS485 port and writes changed targets at no more than 20 Hz. The SDK
 instance belongs only to this process.
+For coexistence diagnosis, `linkerhand_connect_only:=true` with hardware mode
+still connects the SDK and polls feedback/faults but never calls `finger_move`.
+Run `right_linkerhand_node` alone with `dry_run:=false`,
+`hardware_write_enabled:=true`, and `connect_only:=true` when the arm adapter
+must remain off. Status then reports `CONNECT_ONLY` and `target=null`.
 
 `press_index >= 0.60` means pressed and `<= 0.40` means released.
 Each armed released-to-pressed edge toggles between CLOSED

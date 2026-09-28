@@ -115,6 +115,11 @@ if(BUILD_TESTING)
     test/test_right_linkerhand_launch.py
     PYTHON_EXECUTABLE /usr/bin/python3
     ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1)
+  ament_add_pytest_test(
+    test_right_linkerhand_transport
+    test/test_right_linkerhand_transport.py
+    PYTHON_EXECUTABLE /usr/bin/python3
+    ENV PYTEST_DISABLE_PLUGIN_AUTOLOAD=1)
 endif()
 ament_export_include_directories(include)
 ament_export_libraries(adapter_logic)

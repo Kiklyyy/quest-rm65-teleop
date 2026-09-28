@@ -18,6 +18,11 @@ OPEN，但 `target=null`、不自动发 OPEN；连接后先读 `get_state()` 和
 `false`。显式 `true` 且 `mode:=dry_run` 不导入或连接 SDK；`mode:=hardware`
 由该节点独占实例化现场
 `LinkerHandApi(hand_type="right", hand_joint="L7", modbus="RML")`。
+诊断参数 `connect_only:=true` 只允许与 `dry_run:=false`、
+`hardware_write_enabled:=true` 同用：仍建立 SDK 连接、轮询
+`get_state()`/`get_fault()`，但无论 Quest 输入如何都禁止 `finger_move()`。
+右臂 launch 提供 `linkerhand_connect_only:=true` 传入该参数；单独运行
+`right_linkerhand_node` 可在不启动 arm adapter 的情况下诊断。
 SDK 固定路径为 `/home/lh/quest2ros2_ws/linkerhand/linker_hand_python_sdk`，
 使用现场 RealMan API2 工具端 RS485 适配。硬件启动会配置右臂工具端电压/Modbus；
 同一时刻只能有一个灵巧手 SDK 控制进程。右 RM driver 仍由原启动链管理。
@@ -26,7 +31,8 @@ SDK 固定路径为 `/home/lh/quest2ros2_ws/linkerhand/linker_hand_python_sdk`�
 `trigger_value`、`trigger_pressed`、`trigger_armed`、
 `hand_toggle_state`（OPEN/CLOSED）、`target`、`actual`、`fault_codes`、
 `communication_ok`、`input_fresh`、`dry_run`、`state`、`error`、
-`invalid_input_count`。启动未按压时 `target=null`；dry-run 的 `actual`、
+`invalid_input_count`、`connect_only`。只连接状态为 `CONNECT_ONLY`，
+`target=null`；启动未按压时 `target=null`；dry-run 的 `actual`、
 `fault_codes` 为 null、`communication_ok=false`。输入 stale 不产生新命令；
 故障码或通信异常阻止硬件写入，日志限流。`get_force()`、`get_current()`
 不用于本版反馈或闭环。

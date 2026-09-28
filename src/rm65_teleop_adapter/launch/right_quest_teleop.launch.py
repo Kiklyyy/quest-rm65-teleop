@@ -57,7 +57,17 @@ def _adapter_node(context):
 
 def _linkerhand_parameters(context):
     hardware = LaunchConfiguration("mode").perform(context) == "hardware"
-    return {"dry_run": not hardware, "hardware_write_enabled": hardware}
+    connect_only_value = LaunchConfiguration("linkerhand_connect_only").perform(context).lower()
+    if connect_only_value not in ("true", "false"):
+        raise RuntimeError("linkerhand_connect_only must be true or false")
+    connect_only = connect_only_value == "true"
+    if connect_only and not hardware:
+        raise RuntimeError("linkerhand_connect_only requires mode:=hardware")
+    return {
+        "dry_run": not hardware,
+        "hardware_write_enabled": hardware,
+        "connect_only": connect_only,
+    }
 
 
 def _linkerhand_node(context):
@@ -110,6 +120,11 @@ def generate_launch_description():
             "start_linkerhand",
             default_value="false",
             description="Start the right L7 hand node; dry-run previews, hardware connects SDK",
+        ),
+        DeclareLaunchArgument(
+            "linkerhand_connect_only",
+            default_value="false",
+            description="Initialize right L7 SDK and poll feedback; never send finger_move",
         ),
         DeclareLaunchArgument(
             "start_rm_driver",
