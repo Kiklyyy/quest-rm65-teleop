@@ -94,7 +94,7 @@ def _validate_hardware_config(config_path, package_share):
     for key, value in {
         "home_button_field": "upper",
         "home_hold_seconds": 1.5,
-        "home_speed_deg_s": 15.0,
+        "home_speed_deg_s": 50.0,
         "home_action_name": "/left/rm_group_controller/follow_joint_trajectory",
         "home_joint_names": [f"joint{i}" for i in range(1, 7)],
     }.items():

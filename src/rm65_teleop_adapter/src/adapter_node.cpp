@@ -177,6 +177,8 @@ public:
       "home_joint_names", std::vector<std::string>{});
     home_parameters.speed_deg_s = declare_parameter<double>("home_speed_deg_s", 0.0);
     home_parameters.hold_seconds = declare_parameter<double>("home_hold_seconds", 0.0);
+    const double joint_preset_speed_deg_s = declare_parameter<double>(
+      "quest_joint_preset_speed_deg_s", 15.0);
     joint_state_topic_ = declare_parameter<std::string>("joint_state_topic", "/right/joint_states");
     joint_state_timeout_ = declare_parameter<double>("joint_state_timeout", 0.10);
     if (home_enabled_) {
@@ -187,10 +189,14 @@ public:
       home_config_ = resolve_home_config(home_parameters);
       if (!home_config_) throw std::invalid_argument("invalid enabled Home configuration");
       if (joint_presets_enabled_) {
+        if (!std::isfinite(joint_preset_speed_deg_s) || joint_preset_speed_deg_s <= 0.0) {
+          throw std::invalid_argument("invalid Quest joint preset speed");
+        }
         const std::array<std::vector<double>, 3> configured_presets{
           quest_right_first, quest_right_second, quest_right_last};
         for (std::size_t i = 0; i < configured_presets.size(); ++i) {
           joint_preset_trajectories_[i] = home_config_->trajectory;
+          joint_preset_trajectories_[i].speed_deg_s = joint_preset_speed_deg_s;
           std::copy(configured_presets[i].begin(), configured_presets[i].end(),
             joint_preset_trajectories_[i].target_degrees.begin());
           if (!home_trajectory_config_valid(joint_preset_trajectories_[i])) {

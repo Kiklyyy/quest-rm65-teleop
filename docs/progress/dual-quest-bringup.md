@@ -80,6 +80,38 @@ with the hand node enabled.
 - No real driver, controller, Quest endpoint, hand SDK connection, command or
   robot motion was started while implementing this checkpoint.
 
+## 2026-09-28 right X/A/B preset speed alignment
+
+- The onsite operator reported all three right-arm preset buttons (left
+  controller lower X, right controller lower A, right controller upper B)
+  moving much more slowly than left Y/Home. Current local configuration
+  explains the difference: the left Y/Home trajectory uses
+  `home_speed_deg_s=50.0`, while right X/A/B used the separate
+  `quest_joint_preset_speed_deg_s=20.0`. Both use the same four-point
+  smoothstep trajectory generator and RealMan FollowJointTrajectory Action.
+- Right X/A/B now use `quest_joint_preset_speed_deg_s=50.0`, matching the
+  current left Y/Home speed bound. The three right targets, the operator's
+  revised B target, left Home target, hold time, Action ownership,
+  cancellation/stop path, watchdogs and workspace were not changed by this
+  speed fix. Different joint distances can still produce different elapsed
+  times at the same nominal speed.
+- Related right-arm errors are a separate issue. Right adapter logs from
+  2026-09-28 record 15 `FAULT` transitions: 13
+  `control_period_exceeded`, one `anchor_angle_violation`, and one
+  `unexpected_target_jump`; **zero `workspace_violation`**. The control
+  loop runs at 200 Hz with a 50 ms maximum period, so the common failure
+  means at least one cycle exceeded 50 ms. The logs do not identify which
+  process caused the delay. The historical TCP endpoint port conflict from
+  two failed launches was cleared separately; this speed change does not
+  claim to solve control-cycle latency or Quest input dropout.
+- System-Python focused config/interface tests passed **17/17**. The adapter
+  package rebuilt successfully. Isolated-domain Home trajectory and synthetic
+  Action/ownership CTests passed; the synthetic Action checked the right B
+  goal's revised target and 50 deg/s timing bound. No robot, hand, Home or
+  Cartesian hardware motion was started for this change. Hardware feel and
+  vendor execution speed at the new setting remain to be observed by the
+  operator in the next normal full launch.
+
 ## 2026-09-28 dual launch startup preflight
 
 - The parent previously started RM driver/control and the right Quest child
@@ -130,3 +162,19 @@ with the hand node enabled.
   270 degrees. Adapter build passed; focused Python tests passed 28/28,
   configuration C++ tests passed 10/10, and selected orientation logic tests
   passed 4/4. No real robot motion was performed for this configuration change.
+
+## 2026-09-29 current right X/A/B preset targets
+
+- The current hardware configuration has these absolute `joint1..joint6`
+  targets, in degrees:
+  - X / `quest_right_first`: `[69.095, -32.717, 95.243, 34.124, 37.393, 159.266]`;
+  - A / `quest_right_second`: `[83.357, 24.735, 67.241, -2.984, 73.23, -106.441]`;
+  - B / `quest_right_last`: `[101.488, 45.519, 51.837, 0.307, 81.795, -170.454]`.
+- These values supersede the earlier preset arrays in this branch. Publishing
+  the configuration does not validate the swept joint paths on real hardware;
+  the previous real-hardware observations cannot be attributed to these new
+  arrays without a separate trace.
+- The adapter package built successfully. Four focused CTest entries passed:
+  synthetic Home/Action with exact X/A/B arrays, motion-profile parameters,
+  left/right interface isolation, and dual-launch preflight. The test domain
+  was isolated from hardware. No real robot command was sent for this upload.

@@ -317,7 +317,6 @@ release stop 和 release → press rearm 语义。
 也不表示系统能追踪完整的 270° 累积转动。连续样本的 45° 跳变检查、
 角速度与每周期角步长限制仍生效；本次不改变平移、Home 或 watchdog。
 
-
 ## 已确认的右 RM65 runtime 接口
 
 控制机环境实测：ROS 2 Humble，`ROS_DOMAIN_ID=42`，右臂地址 `169.254.128.19:8080`，UDP 回传 `169.254.128.100:8090`。
@@ -358,7 +357,9 @@ driver 必须以 `/right` namespace 和右臂参数单独启动。启动 driver 
   `quest_right_second`, and `quest_right_last`, respectively. The old single
   right B/Home target is superseded; left Y/Home is unchanged.
 - All three targets are six joint degrees in `hardware.yaml`, ordered
-  `joint1..joint6`. `home_hold_seconds=1.5`, `home_speed_deg_s=15.0`, joint-name
+  `joint1..joint6`. `home_hold_seconds=1.5`, right presets use
+  `quest_joint_preset_speed_deg_s=50.0`, matching the current left Y/Home
+  `home_speed_deg_s=50.0`; joint-name
   reordering and the right Action
   `/right/rm_group_controller/follow_joint_trajectory` are shared.
 - A request starts only from `ARMED` with Grip released, both Quest input streams
@@ -419,7 +420,8 @@ remains the only left Home button. Right X is read from the left-controller
 message but has no authority over the left adapter. All joint requests require
 Grip released and a continuous 1.5 s hold while `ARMED`, then send the existing
 four-point smoothstep
-`FollowJointTrajectory` at a nominal 15 deg/s joint speed. During `HOMING`,
+`FollowJointTrajectory` at the configured joint speed (currently 50 deg/s
+for left Y and right X/A/B). During `HOMING`,
 Cartesian commands are suppressed. Releasing the Home button requests Action
 cancel plus physical stop; the adapter stays `HOMING` until a terminal result.
 Success or acknowledged cancel enters `REARM_REQUIRED`, and a fresh Grip press

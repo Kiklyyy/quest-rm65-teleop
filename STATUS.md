@@ -52,6 +52,20 @@ SDK 连接、真实反馈和张合方向已由现场操作者人工确认；本�
 - X/A/B target selection and exact final joint degrees pass isolated Action
   testing with no real driver, controller or robot motion. New preset hardware
   behavior remains pending operator-supervised validation.
+- **2026-09-28 right preset speed fix:** operator reports X/A/B too slow
+  compared with left Y/Home. The current right-only speed was 20 deg/s while
+  left Y/Home was 50 deg/s; X/A/B now use the same 50 deg/s bound through the
+  unchanged four-point Action path. Focused 17/17 configuration tests,
+  adapter build and isolated synthetic Home/Action tests pass. Hardware feel
+  at 50 deg/s remains unverified. In the day's right adapter logs, 13 of 15
+  FAULT transitions were `control_period_exceeded`, with one anchor-angle
+  violation and one target jump; no workspace violation was observed. The
+  speed fix does not address that control-cycle fault or Quest dropout.
+- **2026-09-29 source sync:** the current `hardware.yaml` contains updated
+  right X/A/B joint targets recorded in `docs/progress/dual-quest-bringup.md`.
+  Adapter build and four focused CTest entries passed, including exact-target
+  synthetic Action checks. These new target arrays have no recorded real-arm
+  swept-path validation; source sync did not start hardware.
 
 ## Right LinkerHand L7 Quest trigger toggle (software checkpoint)
 

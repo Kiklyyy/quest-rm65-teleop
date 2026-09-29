@@ -151,16 +151,18 @@ def test_home_is_hardware_only_and_uses_confirmed_configuration():
     assert hardware["home_enabled"] is True
     assert left_hardware["home_button_field"] == "upper"
     assert hardware["home_hold_seconds"] == 1.5
-    assert hardware["home_speed_deg_s"] == 15.0
+    assert hardware["home_speed_deg_s"] == 50.0
+    assert hardware["quest_joint_preset_speed_deg_s"] == left_hardware["home_speed_deg_s"]
     assert hardware["quest_right_first"] == [
-        92.39, -40.604, 98.498, -2.934, 36.74, 69.0]
+        69.095, -32.717, 95.243, 34.124, 37.393, 159.266]
     assert hardware["quest_right_second"] == [
-        92.385, -4.404, 86.974, -2.921, 45.972, -209.053]
+        83.357, 24.735, 67.241, -2.984, 73.23, -106.441]
     assert hardware["quest_right_last"] == [
-        95.905, 32.65, 35.463, -2.584, 93.33, -293.409]
+        101.488, 45.519, 51.837, 0.307, 81.795, -170.454]
     assert hardware["home_joint_names"] == [f"joint{i}" for i in range(1, 7)]
     assert hardware["home_action_name"] == "/right/rm_group_controller/follow_joint_trajectory"
     for profile in ("safe", "normal", "fast"):
         assert not (set(load_yaml_parameters(PROFILE_DIR / f"{profile}.yaml")) &
                     {"home_enabled", "home_button_field", "home_hold_seconds", "home_speed_deg_s",
+                     "quest_joint_preset_speed_deg_s",
                      "home_joint_degrees", "home_joint_names", "home_action_name"})

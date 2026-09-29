@@ -231,10 +231,10 @@ def test_home_synthetic_probe():
 
                     verify_successful_preset(
                         "button_x", "X_FIRST",
-                        [92.39, -40.604, 98.498, -2.934, 36.74, 69.0])
+                        [69.095, -32.717, 95.243, 34.124, 37.393, 159.266])
                     verify_successful_preset(
                         "button_a", "A_SECOND",
-                        [92.385, -4.404, 86.974, -2.921, 45.972, -209.053])
+                        [83.357, 24.735, 67.241, -2.984, 73.23, -106.441])
                     node.goals.clear()
                     node.cancel_count = 0
                     node.stop_count = 0
@@ -250,7 +250,7 @@ def test_home_synthetic_probe():
                     points = first_goal.trajectory.points
                     assert len(points) == 4  # RealMan requires its >3-point spline branch.
                     expected_degrees = [
-                        95.905, 32.65, 35.463, -2.584, 93.33, -293.409]
+                        101.488, 45.519, 51.837, 0.307, 81.795, -170.454]
                     current_radians = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
                     assert all(math.isclose(a, c, abs_tol=1e-9)
                                for a, c in zip(points[0].positions, current_radians))
@@ -270,7 +270,7 @@ def test_home_synthetic_probe():
                     assert times == sorted(times) and len(set(times)) == 4
                     duration = times[-1]
                     assert max(abs(a - c) for a, c in zip(actual_positions, current_radians)) <= \
-                        duration * math.radians(15.0) / 1.5 + 1e-8
+                        duration * math.radians(50.0) / 1.5 + 1e-8
                     node.grip = 1.0
                     node.quest_x = 0.01
                     time.sleep(0.3)

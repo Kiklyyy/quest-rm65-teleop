@@ -343,8 +343,9 @@ exclusive ownership. Hold exactly one of X/A/B continuously for
 full release are rejected until all three are released. Releasing the selected
 button during motion requests Action cancel plus repeated stop.
 
-The generated trajectory retains the existing four-point smoothstep and
-`home_speed_deg_s: 15.0` bound. JointState is reordered by name, and missing,
+The generated trajectory retains the existing four-point smoothstep and the
+right-only `quest_joint_preset_speed_deg_s: 50.0` bound, matching the current
+left Y/Home `home_speed_deg_s: 50.0`. JointState is reordered by name; missing,
 duplicate, non-finite or mismatched samples block the request. During the
 joint action the adapter publishes no Cartesian `movep_canfd_cmd`. Completion
 or acknowledged cancellation enters `REARM_REQUIRED`, followed by button and
