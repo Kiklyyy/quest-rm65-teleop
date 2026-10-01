@@ -16,10 +16,13 @@ jobs:
       ROS_LOCALHOST_ONLY: '1'
       QT_QPA_PLATFORM: offscreen
       PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+      TZ: Asia/Shanghai
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: System Python and build dependencies (isolated CI container)
         run: |
+          /usr/bin/python3 -c "import PyQt5; print(PyQt5.__file__)" || \
+            echo 'python3-pyqt5 is missing in the isolated CI container; installing the apt system package.'
           apt-get update -qq
           apt-get install -y --no-install-recommends build-essential cmake git \
             python3-colcon-common-extensions python3-pyqt5 python3-pytest \
@@ -62,8 +65,11 @@ jobs:
           source /opt/ros/humble/setup.bash
           source install/interfaces/setup.bash
           source install/setup.bash
-          /usr/bin/colcon test --packages-select quest2ros ros_tcp_endpoint q2r2_bringup rm65_teleop_adapter \
-            --return-code-on-test-failure --event-handlers console_direct+
+          # This baseline test requires the unversioned onsite RS485 SDK.
+          # Do not install/connect that SDK on CI; retain every software test.
+          /usr/bin/colcon test --packages-select quest2ros ros_tcp_endpoint q2r2_bringup rm65_teleop_adapter rm65_teleop_dashboard \
+            --return-code-on-test-failure --event-handlers console_direct+ \
+            --ctest-args -E '^test_right_linkerhand_transport$'
           /usr/bin/colcon test-result --verbose
       - name: Render demo at three desktop sizes
         if: always()
