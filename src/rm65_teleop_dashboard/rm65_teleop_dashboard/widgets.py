@@ -298,6 +298,12 @@ class ControllerCard(Card):
             self.buttons.append(widget)
         self.body.addLayout(button_row)
 
+    def set_compact(self, compact):
+        self.glyph.setVisible(not compact)
+        self.heading.setSpacing(4 if compact else 7)
+        self.body.setContentsMargins(6 if compact else 10, 7,
+                                     6 if compact else 10, 8)
+
     def update_controller(self, controller):
         states = (controller.pose_health.state, controller.inputs_health.state)
         state = "INVALID" if "INVALID" in states else "ONLINE" if all(s == "ONLINE" for s in states) else "OFFLINE" if "OFFLINE" in states else "STALE"

@@ -169,11 +169,11 @@ class MainWindow(QMainWindow):
     def _right(self):
         content, layout = column()
         controllers = Card("VR Controller Inputs", role="panel")
-        controllers.body.setContentsMargins(12, 8, 12, 8)
+        controllers.body.setContentsMargins(8, 8, 8, 8)
         controllers.body.setSpacing(5)
         controllers.heading.addWidget(label("QUEST · LIVE INPUT", "eyebrow"))
         row = QHBoxLayout()
-        row.setSpacing(8)
+        row.setSpacing(4)
         self.left_controller = ControllerCard("left")
         self.right_controller = ControllerCard("right")
         row.addWidget(self.left_controller, 1)
@@ -291,7 +291,7 @@ class MainWindow(QMainWindow):
             self._compact = compact
             self.setStyleSheet(stylesheet(compact))
             if hasattr(self, "left_controller"):
-                self.left_controller.glyph.setVisible(not compact)
-                self.right_controller.glyph.setVisible(not compact)
+                self.left_controller.set_compact(compact)
+                self.right_controller.set_compact(compact)
                 self.left_arm.set_compact(compact)
                 self.right_arm.set_compact(compact)
