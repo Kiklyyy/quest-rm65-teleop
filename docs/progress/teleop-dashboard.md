@@ -221,8 +221,9 @@ and exits through normal cleanup. No pixel-comparison test is required.
 
 ## Verification record
 
-Local implementation checks are complete. Ubuntu ROS/build verification is
-pending the isolated CI run; the table distinguishes the evidence obtained.
+Local implementation checks and isolated Ubuntu validation passed. The
+workspace software regression excludes only the unavailable onsite SDK
+transport group described below. The table distinguishes the evidence obtained.
 
 | Check | Current evidence |
 |---|---|
@@ -230,11 +231,12 @@ pending the isolated CI run; the table distinguishes the evidence obtained.
 | Dashboard local tests | Windows isolated Python: 26 passed, 1 skipped (ROS unavailable), 4 subtests passed; includes pure models/parsers/demo, static contracts and Qt smoke/layout/filter/stale checks |
 | Independent pure/static checkpoint | Windows pytest: 19 passed, 4 subtests passed (models, status parsing, demo, read-only/launch source contract) |
 | Existing pure Python regression | Windows pytest: 69 passed in 0.25 s (Quest target, existing status monitor, right-hand toggle logic) |
-| Qt offscreen smoke and screenshots | Passed locally; window sizes 1920×1080, 1600×900, 1366×768 and 1280×720 tested, PNG capture verified; final layout screenshots being refreshed |
+| Qt offscreen smoke and screenshots | Passed locally; window sizes 1920×1080, 1600×900, 1366×768 and 1280×720 tested; final PNGs captured and visually inspected |
 | Read-only static/package review | Runtime source review found exactly 13 subscriptions and no control publishers/services/action clients; static contract tests passed |
-| Dashboard colcon build/test | Pending isolated Ubuntu 22.04 / Humble CI; onsite Ubuntu SSH unavailable |
-| Existing four-package regression | Pending isolated Ubuntu CI; local pure subset above passed |
-| Real ROS data acquisition | Pending isolated 13-topic receive probe; no onsite robot connection claimed |
+| Dashboard / affected workspace build | Ubuntu 22.04 / Humble CI: five-package build passed in 34.3 s; dashboard-selected build passed in 1.08 s |
+| Dashboard Ubuntu tests | Linux Python 3.10.12 / system PyQt5: 27 passed in 0.92 s, no skips |
+| Five-package software regression | colcon test passed in 27.9 s; 295 reported tests, 0 errors, 0 failures, 0 skipped; includes the 27 dashboard tests and 19/19 adapter CTest groups; onsite SDK transport group excluded as described below |
+| Actual rclpy data acquisition | Isolated 13-topic receive probe passed: named six-joint ordering, Quest/robot receipt rates, malformed JSON, stale suppression, zero monitor output endpoints and clean executor/thread/context shutdown |
 | Hardware actions | None; no RM driver, rm_control, SDK or motion started |
 
 Reproducible Ubuntu checks:
@@ -255,18 +257,18 @@ ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1 \
 /usr/bin/colcon test-result --all --verbose
 ```
 
-Final screenshots will be linked here after the latest layout is rendered and
-visually inspected.
-Live ROS integration and Ubuntu build/regression are distinct from local pure
-logic/demo checks; a local demo pass does not establish either of them.
+Onsite ROS integration is distinct from isolated subscription delivery and demo
+checks. The robot host was unavailable through SSH in this session; the UI has
+not been deployed there or connected to live Quest/robot/hand feedback.
 
 The partial Windows regression above used an isolated validation environment
 outside the worktree; it did not alter Conda or the Ubuntu system. It covers
 `src/Quest2ROS2/test/test_quest_right_target_logic.py`,
 `src/rm65_teleop_adapter/test/test_teleop_status_logic.py` and
 `src/rm65_teleop_adapter/test/test_right_linkerhand_logic.py`. ROS launch,
-generated messages, C++ adapter and onsite SDK tests require the Ubuntu ROS
-environment and remain a separate verification step.
+generated messages and C++ adapter tests run separately in the Ubuntu ROS
+environment. Onsite SDK transport tests require the unavailable vendor SDK;
+CI does not claim to validate the SDK or physical robot behavior.
 
 Windows offscreen validation needed explicit discovery of the installed local
 Qt platform plugins because a non-ASCII virtualenv path was not resolved by the
@@ -281,7 +283,43 @@ only, pinned to RealMan source `c941b565e4f9174afa36561f143ef5fbbb744750`;
 vendor driver/control binaries and the hand SDK are not built or started.
 It then builds all five affected workspace packages and the dashboard selected
 package, runs dashboard tests and `tools/dashboard_ros_probe.py`, runs the
-existing four-package regression and captures three desktop sizes.
+five-package software regression and captures three desktop sizes.
 The receive probe is outside the dashboard package and requires domain 143
 with localhost-only networking; its fixture publishes only feedback/input/status
 messages to exercise actual rclpy subscriptions, never robot command topics.
+
+The CI regression excludes exactly the existing CTest group
+`test_right_linkerhand_transport` (three pytest cases). This group requires the
+unversioned onsite RealMan tool-RS485 SDK at
+`/home/lh/quest2ros2_ws/linkerhand/linker_hand_python_sdk`, which is absent from
+CI. An initial run reached this unchanged test and recorded two expected
+unavailable-SDK skips plus one `ModuleNotFoundError: LinkerHand` in its full-SDK
+constructor case. The file is byte-identical on main and the dashboard branch
+(Git blob `3a5dad4d69dd3ac379506cfcc23df5a5a892d195`); it was not weakened or
+edited. Every repository-contained adapter, launch, Home/preset, watchdog and
+hand-toggle software test remains enabled. This exclusion is an external test
+dependency limitation, not an SDK pass claim. No hand SDK was installed,
+connected or used, and its transport behavior remains unverified in CI.
+
+## Demo screenshots
+
+These PNGs are captures of the running Qt application with explicitly labeled
+DEMO DATA, not mockups or live-hardware evidence:
+
+- [1920 × 1080](../screenshots/teleop-dashboard-demo-1920x1080.png)
+- [1366 × 768](../screenshots/teleop-dashboard-demo-1366x768.png)
+
+At 1920 × 1080 the two six-joint arm cards, robot drawing, both controllers,
+safety fields and all seven right-hand channels are visible. Smaller desktop
+sizes keep the layout usable with per-column scrolling; the 1366 screenshot
+shows the initial viewport rather than every scrollable field.
+
+## Verified source and deployment boundary
+
+The verified application-code baseline is
+`b1402b774e6a22d6ba7c3e0bf21cac29924c52b9` on `feat/teleop-dashboard`:
+[GitHub Actions run 36882727720](https://github.com/Kiklyyy/quest-rm65-teleop/actions/runs/36882727720).
+**Result: SUCCESS.** The workflow verifies the selected dashboard build,
+five-package build, all dashboard tests, actual 13-topic ROS receive probe,
+five-package software regression and demo captures. Source synchronization does
+not deploy to the onsite robot host, restart the teleop stack or enable hardware.

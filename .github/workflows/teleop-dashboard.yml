@@ -71,17 +71,22 @@ jobs:
             --return-code-on-test-failure --event-handlers console_direct+ \
             --ctest-args -E '^test_right_linkerhand_transport$'
           /usr/bin/colcon test-result --verbose
-      - name: Render demo at three desktop sizes
+      - name: Render three demo sizes and exercise offline ROS entry point
         if: always()
         shell: bash
         run: |
           source /opt/ros/humble/setup.bash
+          source install/interfaces/setup.bash
           source install/setup.bash
           mkdir -p captures
           for size in 1920x1080 1600x900 1366x768; do
             /usr/bin/python3 -m rm65_teleop_dashboard.app --demo \
               --width "${size%x*}" --height "${size#*x}" --screenshot "captures/dashboard-${size}.png"
           done
+          # Exercise the installed ROS entry point without any robot/Quest
+          # sources: it must render OFFLINE and shut down its executor cleanly.
+          ros2 run rm65_teleop_dashboard teleop_dashboard \
+            --screenshot captures/dashboard-ros-offline.png
       - name: Preserve verification outputs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
