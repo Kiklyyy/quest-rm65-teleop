@@ -42,6 +42,14 @@ void require_angle_in_zero_pi(const char * name, const double value)
   }
 }
 
+void require_anchor_angle_in_zero_two_pi(const double value)
+{
+  constexpr double kTwoPi = 6.28318530717958647692;
+  if (!std::isfinite(value) || value <= 0.0 || value > kTwoPi) {
+    throw std::invalid_argument("max_anchor_angle_rad must be in (0, 2*pi]");
+  }
+}
+
 }  // namespace
 
 const char * state_name(AdapterState state)
@@ -50,6 +58,7 @@ const char * state_name(AdapterState state)
     case AdapterState::DISABLED: return "DISABLED";
     case AdapterState::ARMED: return "ARMED";
     case AdapterState::ACTIVE: return "ACTIVE";
+    case AdapterState::HOMING: return "HOMING";
     case AdapterState::REARM_REQUIRED: return "REARM_REQUIRED";
     case AdapterState::FAULT: return "FAULT";
   }
@@ -61,11 +70,12 @@ AdapterLogic::AdapterLogic(AdapterConfig config) : config_(std::move(config))
   if (!is_proper_rotation_matrix(config_.mapping)) {
     throw std::invalid_argument("mapping must be a finite proper rotation matrix");
   }
+  require_finite_positive("home_hold_seconds", config_.home_hold_seconds);
   require_finite_positive("rotation_scale", config_.rotation_scale);
   require_finite_positive(
     "max_angular_velocity_rad_s", config_.max_angular_velocity_rad_s);
   require_finite_positive("max_angular_step_rad", config_.max_angular_step_rad);
-  require_angle_in_zero_pi("max_anchor_angle_rad", config_.max_anchor_angle_rad);
+  require_anchor_angle_in_zero_two_pi(config_.max_anchor_angle_rad);
   require_angle_in_zero_pi(
     "unexpected_orientation_jump_rad", config_.unexpected_orientation_jump_rad);
 }
@@ -118,6 +128,62 @@ bool AdapterLogic::clear_fault(bool enable_pressed)
 CycleOutput AdapterLogic::update(const CycleInput & input)
 {
   CycleOutput output;
+  if (!input.home_button_pressed) {
+    home_request_latched_ = false;
+    home_hold_elapsed_seconds_ = 0.0;
+  }
+  if (state_ == AdapterState::HOMING) {
+    output.home_hold_progress = 1.0;
+    if (input.home_action_event == HomeActionEvent::SUCCEEDED) {
+      home_cancel_pending_ = false;
+      home_rearm_pending_ = true;
+      enter_rearm(true, "home_succeeded");
+    } else if (input.home_action_event == HomeActionEvent::CANCELED) {
+      home_cancel_pending_ = false;
+      home_rearm_pending_ = true;
+      enter_rearm(true, fault_reason_.empty() ? "home_canceled" : fault_reason_);
+    } else if (input.home_action_event == HomeActionEvent::REJECTED) {
+      home_cancel_pending_ = false;
+      enter_fault("home_goal_rejected");
+      output.stop_requested = true;
+    } else if (input.home_action_event == HomeActionEvent::ABORTED) {
+      home_cancel_pending_ = false;
+      enter_fault("home_goal_aborted");
+      output.stop_requested = true;
+    } else if (!home_cancel_pending_) {
+      const char * cancel_reason = nullptr;
+      if (!input.home_button_pressed) cancel_reason = "home_button_released";
+      else if (!input.control_period_valid) cancel_reason = "home_control_period_exceeded";
+      else if (!input.quest_pose_fresh) cancel_reason = "home_quest_pose_not_fresh";
+      else if (!input.inputs_fresh) cancel_reason = "home_inputs_not_fresh";
+      else if (!input.home_inputs_fresh) cancel_reason = "home_preset_inputs_not_fresh";
+      else if (!input.robot_fresh) cancel_reason = "home_robot_not_fresh";
+      else if (!input.quest_orientation_valid ||
+               input.quest_orientation_status == OrientationSampleStatus::INVALID ||
+               !normalize_quaternion(input.quest_orientation))
+        cancel_reason = "home_quest_pose_invalid";
+      else if (!input.robot_orientation_valid ||
+               !normalize_quaternion(input.robot_pose.orientation))
+        cancel_reason = "home_robot_pose_invalid";
+      else if (!input.joint_state_fresh) cancel_reason = "home_joint_state_not_fresh";
+      else if (!input.joint_state_valid) cancel_reason = "home_joint_state_invalid";
+      else if (!input.target_fresh) cancel_reason = "home_target_not_fresh";
+      else if (!pose_is_finite(input.target_pose) || !pose_is_finite(input.robot_pose))
+        cancel_reason = "home_pose_invalid";
+      else if (!input.command_path_ready || !input.home_command_path_ready)
+        cancel_reason = "home_command_path_not_ready";
+      else if (!input.home_action_ready) cancel_reason = "home_action_not_ready";
+      if (cancel_reason) {
+        fault_reason_ = cancel_reason;
+        home_cancel_pending_ = true;
+        output.home_cancel_requested = true;
+        output.stop_requested = true;
+      }
+    }
+    output.state = state_;
+    output.reason = fault_reason_;
+    return output;
+  }
   const bool was_active = state_ == AdapterState::ACTIVE;
   if (!pose_is_finite(input.target_pose) || !pose_is_finite(input.robot_pose)) {
     enter_fault("non_finite_or_invalid_pose");
@@ -168,10 +234,38 @@ CycleOutput AdapterLogic::update(const CycleInput & input)
       fault_reason_.clear();
       output.command = last_command_;
       output.anchor_captured = true;
+    } else {
+      const bool home_ready = input.home_button_pressed && !home_request_latched_ &&
+        input.target_fresh && input.quest_pose_fresh && input.inputs_fresh &&
+        input.home_inputs_fresh &&
+        input.robot_fresh && input.joint_state_fresh && input.joint_state_valid &&
+        input.home_action_ready && input.home_plan_valid && input.command_path_ready &&
+        input.home_command_path_ready &&
+        input.control_period_valid &&
+        input.quest_orientation_valid && input.robot_orientation_valid &&
+        pose_is_finite(input.target_pose) && pose_is_finite(input.robot_pose);
+      if (home_ready && std::isfinite(input.dt_seconds) && input.dt_seconds > 0.0) {
+        home_hold_elapsed_seconds_ += input.dt_seconds;
+        output.home_hold_progress = std::min(
+          1.0, home_hold_elapsed_seconds_ / config_.home_hold_seconds);
+        if (home_hold_elapsed_seconds_ >= config_.home_hold_seconds) {
+          state_ = AdapterState::HOMING;
+          home_request_latched_ = true;
+          home_cancel_pending_ = false;
+          fault_reason_.clear();
+          output.home_goal_requested = true;
+        }
+      } else {
+        home_hold_elapsed_seconds_ = 0.0;
+      }
     }
   } else if (state_ == AdapterState::REARM_REQUIRED) {
-    if (!input.enable) release_observed_ = true;
-    if (release_observed_ && !input.enable && fresh) {
+    if (home_rearm_pending_ && !input.home_button_pressed) {
+      home_rearm_pending_ = false;
+      release_observed_ = false;
+    }
+    if (!home_rearm_pending_ && !input.enable) release_observed_ = true;
+    if (!home_rearm_pending_ && release_observed_ && !input.enable && fresh) {
       state_ = AdapterState::ARMED;
       fault_reason_.clear();
     }

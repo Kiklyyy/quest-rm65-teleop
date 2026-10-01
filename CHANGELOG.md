@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-09-28 - Dual RM65 + Quest unified bringup
+
+- Added `dual_quest_teleop.launch.py` to compose the installed dual RM65 driver,
+  dual `rm_control`, both existing Quest teleop launches, one TCP endpoint and
+  the optional right O7 node.
+- Dry-run remains the default and does not start RM hardware processes.
+  Hardware mode uses the existing left/right IP, UDP, Action and topic
+  configuration without duplicating it in this package.
+- Limited shared dual-arm profiles to `safe` and `normal`; kept right O7
+  startup explicit and off by default while the API2/driver coexistence jump
+  remains unresolved.
+- Added launch contract tests for defaults, single TCP ownership, verified
+  driver/control launch reuse and invalid hand/profile combinations.
+- Made the optional O7 node exit cleanly under the unified launch Ctrl-C path
+  by handling the expected interrupt and skipping duplicate ROS shutdown.
+- Consolidated right and left hardware adapter parameters into one
+  `hardware.yaml`: common gates/watchdogs/limits use a ROS 2 `/**` block, while
+  each arm keeps its own endpoints, mapping, frame and Home target. Removed the
+  duplicate `left_hardware.yaml` and switched the left launch to the shared file.
+- Added right-arm Quest X/A/B joint presets from `hardware.yaml`: X selects
+  `quest_right_first`, A selects `quest_right_second`, and B selects
+  `quest_right_last`. The presets reuse the existing guarded four-point
+  `FollowJointTrajectory` path, 1.5 s hold, release-to-cancel and rearm rules.
+- Added left-controller X input freshness, startup-release and multi-button
+  conflict latching, preset selection/status fields, exact target tests and an
+  isolated synthetic Action test. No real joint-preset motion was executed.
+
+## 2026-09-23 - Right-arm Home and stability controls
+
+- Physical A=`button_lower` remains reserved; B=`button_upper` now holds a right-arm joint-space Home. Grip `press_middle` teleop deadman and release-to-press anchor capture are unchanged.
+- Added configured six-joint Home target, name-based JointState reordering, 15 deg/s nominal speed bound, 1.5 s hold gate, and `/right/rm_group_controller/follow_joint_trajectory` transport.
+- `HOMING` excludes Cartesian commands, waits for cancel terminal acknowledgment, and requires B/Grip release before teleop rearm. Hardware-only action creation leaves dry-run Home disabled.
+- Added input ages, joint health, Home action/hold status, and rearm/watchdog counters. The read-only monitor reports `JOINTS` and `HOME`.
+- Four-package automated result: 203 tests, 0 errors, 0 failures, 0 skipped. Isolated synthetic result: 5 goals, 4 cancels, 1 success, 0 Cartesian commands, 0 real command publishers. A dry-run graph check found no real Home action client. No real RM driver or Home goal was used.
+- real RM65 Home validation = pending.
+
 ## 2026-09-22 — Right-arm 6DoF orientation control
 
 - 新增 raw `/q2r_right_hand_pose.pose.orientation` → `rm65_teleop_adapter` 的相对姿态路径；既有 `/quest_right_target_pose` bridge 继续只承担已验证平移 target。

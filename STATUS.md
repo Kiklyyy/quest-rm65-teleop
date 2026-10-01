@@ -1,6 +1,6 @@
 # Project Status
 
-更新日期：2026-09-23
+更新日期：2026-09-28
 
 ## 当前总体阶段
 
@@ -8,8 +8,112 @@
 
 右臂 6DoF orientation extension 已完成自动化验证、隔离 synthetic dry-run、
 真实 Quest live quaternion/preview 验证，以及实际右 RM65 的首次人工姿态跟随测试。
-当前正式姿态参数恢复为 rotation_scale=1.0、90 deg/s、0.01 rad/cycle、90 deg
-单次 Grip anchor 上限。夹爪、左臂、双臂和完整安全验收仍未完成。
+当前姿态参数为 rotation_scale=1.0、90 deg/s、0.01 rad/cycle；右臂硬件
+Grip anchor 配置为 270 deg，左臂仍为 90 deg。当前四元数最短角最大为 180 deg，
+所以右臂的 270 deg 配置实际不触发锚点角 FAULT，但逐帧跳变、角速度和步长限制仍生效。
+右手灵巧手 Quest 控制的软件版本已加入独立分支，
+SDK 连接、真实反馈和张合方向已由现场操作者人工确认；本版 toggle 和双臂同场集成尚未验证；左臂其余验收、双臂和完整安全验收仍未完成。
+
+## Dual Quest one-command bringup (software checkpoint)
+
+- Branch `feat/dual-quest-bringup` adds `dual_quest_teleop.launch.py` on top of
+  the pushed left-teleop/right-LinkerHand baseline. `/home/lh/robot` is reused
+  read-only and was not modified.
+- Hardware mode reuses the installed verified `rm_65_dual_driver.launch.py`
+  and `rm_65_dual_control.launch.py`, then includes both existing Quest launch
+  files. Exactly one ROS TCP endpoint is enabled (right child owns it; left is
+  forced off). Dry-run starts neither driver nor controller.
+- The dual profile is restricted to `safe|normal`; defaults remain
+  `mode:=dry_run`, `motion_profile:=safe`, and `start_linkerhand:=false`.
+  Existing endpoint identities, safety gates, watchdogs and Home parameters
+  are unchanged.
+- Both hardware adapters now load one `config/hardware.yaml`. Its ROS 2 `/**`
+  block defines identical safety/timing values once, while the right and left
+  node blocks retain independent endpoints, mappings, frames and Home targets.
+  The duplicate `left_hardware.yaml` has been removed.
+- The right block now defines three six-joint Quest presets: X from left
+  `button_lower` -> `quest_right_first`, A from right `button_lower` ->
+  `quest_right_second`, and B from right `button_upper` -> `quest_right_last`.
+  They reuse the existing right FollowJointTrajectory safety path, require a
+  single 1.5 s hold with Grip released, and cancel+stop on selected-button
+  release or watchdog/path failure. The prior single right B/Home target is
+  superseded; left Y/Home is unchanged.
+- This checkpoint is software-only. No RM driver, `rm_control`, Quest hardware,
+  O7 SDK connection or robot motion was started. The known right RM driver +
+  O7 API2 coexistence/old-pose jump remains open, so automatic O7 startup is
+  intentionally not the default. See `docs/progress/dual-quest-bringup.md`.
+- Four-package build passed; final isolated regression reports 266 tests with
+  zero errors/failures/skips. Dry-run showed both adapters, both target bridges
+  and the O7 dry-run node together, with both real movep topics absent and a
+  clean unified Ctrl-C shutdown.
+- Isolated hardware-mode config loading, with all external processes disabled,
+  confirmed that both adapters receive the shared 200 Hz/workspace values and
+  retain separate `/left`/`/right` driver identities, mappings and Home Actions.
+- X/A/B target selection and exact final joint degrees pass isolated Action
+  testing with no real driver, controller or robot motion. New preset hardware
+  behavior remains pending operator-supervised validation.
+- **2026-09-28 right preset speed fix:** operator reports X/A/B too slow
+  compared with left Y/Home. The current right-only speed was 20 deg/s while
+  left Y/Home was 50 deg/s; X/A/B now use the same 50 deg/s bound through the
+  unchanged four-point Action path. Focused 17/17 configuration tests,
+  adapter build and isolated synthetic Home/Action tests pass. Hardware feel
+  at 50 deg/s remains unverified. In the day's right adapter logs, 13 of 15
+  FAULT transitions were `control_period_exceeded`, with one anchor-angle
+  violation and one target jump; no workspace violation was observed. The
+  speed fix does not address that control-cycle fault or Quest dropout.
+- **2026-09-29 source sync:** the current `hardware.yaml` contains updated
+  right X/A/B joint targets recorded in `docs/progress/dual-quest-bringup.md`.
+  Adapter build and four focused CTest entries passed, including exact-target
+  synthetic Action checks. These new target arrays have no recorded real-arm
+  swept-path validation; source sync did not start hardware.
+
+## Right LinkerHand L7 Quest trigger toggle (software checkpoint)
+
+- Branch `feat/right-linkerhand-quest` is based on left teleop SHA `57e919fe57818865b179be0d4ac2b57e0714fb9e`; separate left-worktree YAML edits and `/home/lh/robot` were untouched.
+- Independent `/right_linkerhand` subscribes only to right `press_index`: press `>=0.60`, release `<=0.40`, hysteresis between. Each armed rising edge toggles CLOSED `[73,0,0,0,0,0,156]` then OPEN `[73,0,255,255,255,255,156]`. Startup has logical OPEN and `target=null`, with no automatic hand motion. Stale/non-finite input holds position and requires a valid release before rearming. Grip and B/Home are unchanged.
+- Right launch defaults `start_linkerhand:=false`. Dry-run uses no SDK. Hardware mode uses the onsite right-L7 RealMan RS485 SDK and reads feedback/faults before any command. Status includes trigger value/semantic/armed state, hand toggle state, target/actual, raw fault codes, communication and input freshness.
+- The onsite operator reports standalone SDK connection, real feedback, and open/close direction passed. The current toggle revision has software validation only. Dual RM65 + right LinkerHand coexistence and cross-control tests were deferred by the operator; no live command was sent this revision. Quest/TCP dropouts remain open; grasp force and knife handling remain unverified.
+- **Right-side coexistence A/B observed onsite after that checkpoint:** with `start_linkerhand:=false`, right Grip re-anchors normally and does not jump; with `start_linkerhand:=true`, right Grip first jumps toward an old position after the SDK establishes its connection. The adapter's first command is already assigned the current robot anchor by its existing logic. The exact controller/API2 conflict is not yet known. This branch now adds a hardware `connect_only` diagnostic mode and a first-command anchor/pose-delta log; neither changes arm motion logic. The operator was unavailable for the new staged test, so no additional real robot command was issued. See the coexistence diagnosis in `docs/progress/right-linkerhand-quest.md`.
+- Coexistence software checkpoint: four packages built in separate `/tmp` build/install paths; isolated domain 143 regression passed 18/18 CTest entries and 183/183 reported tests, including new SDK constructor-call mocks. Dry-run launch off/on smoke passed. The exact root cause, SDK/driver coexistence, and no-jump fix remain **unverified** until the operator-supervised A/B/C hardware sequence.
+- Four-package build passed. Isolated adapter regression passed 17/17 CTest entries and 177/177 reported tests (toggle logic 9, ROS node 8, launch contract 2), with zero failures/skips. Isolated real-launch dry-run smoke confirmed hand off/on and two toggles without a right-arm movep publisher. Details are in `docs/progress/right-linkerhand-quest.md`.
+
+## Left RM65 Quest teleop (+Z and −Y directions observed; XYZ incomplete)
+
+- **2026-09-26 left Y Home real-hardware result:** one exclusive left driver, left-only `rm_control`, adapter and Quest endpoint formed the expected graph: movep adapter→driver 1/1, movej control→driver 1/1, stop adapter→driver+control 1/2, left FollowJointTrajectory adapter client/control server 1/1; both adapter command paths were ready. From an operator-confirmed clear away pose, Y hold sent four points with 2.678095 s vendor duration and returned `SUCCEEDED`; final ordered joint degrees `[-90.506925,-7.426599,-62.399226,-3.517336,-37.078003,99.190284]` were within **0.023°** of left Home. Adapter entered `REARM_REQUIRED`, then `ARMED` only after Y release, with no automatic `ACTIVE`. The operator subsequently repositioned the arm; the trace records two Grip `ACTIVE` intervals during that repositioning. From a second clear away pose (max delta about 43.40°, nominal duration 4.34 s), the operator released Y during Home motion. RealMan reported vendor `Goal Succeeded` at about the release time, while the shared pending-cancel compatibility mapping yielded adapter `CANCELED`, `REARM_REQUIRED`, then `ARMED`; the operator observed a physical stop without emergency stop. The arm stopped before Home, but joint 3 advanced another **6.44°** after Y release and approached stability about 2 s later. Functional Y→left Home and cancel semantics are hardware validated; physical stop margin needs review before broader safety acceptance. No right-arm Home test, gripper or dual-arm action occurred. Watchdog count stayed 0 in this session; historical Quest input dropouts remain open. All exact left session processes and TCP listener were stopped afterward.
+- Branch `feat/left-rm65-teleop` depends on right Home closeout `074e0fa3b7b727fd39c4a2818a22114efe6ec1f3`; `origin/main` did not yet include that work at branch creation.
+- **2026-09-26 left Home implementation checkpoint:** explicit left hardware config now maps physical Y=`button_upper` to the shared Home implementation, with 1.5 s hold, Grip released, 15 deg/s, six-joint target `[-90.52991560598026,-7.43359734865227,-62.41522144150158,-3.5143370089334374,-37.08400247904573,99.21228312734117]` degrees and Action `/left/rm_group_controller/follow_joint_trajectory`. Left dry-run still disables Home and creates no real Action client; right B/Home target and endpoints are unchanged. The left launch strictly validates same-arm endpoints and Home parameters. Adapter-only build, focused Python **16/16** and Home-related CTest **8/8** passed in isolated domain 143 after sourcing RealMan message packages. The first CTest invocation's isolated probe could not import `rm_ros_interfaces` until that environment was sourced; no code change was needed. **Left real Home motion and cancel remain pending**; no Home goal or robot motion occurred in this checkpoint. Quest input dropouts remain open with unchanged timeouts.
+- The right adapter executable/safety state machine now has explicit per-arm node identities, topics and preview/status/service endpoints. Right endpoint and Home configuration remain unchanged. A parameterized Quest target bridge and read-only monitor support a separate left dry-run launch.
+- Operator-confirmed left physical axes yield the mathematically proper matrix `[[0,0,-1],[-1,0,0],[0,1,0]]`; software tests cover XYZ and the existing world-frame orientation convention. Real Quest plus real robot-anchor **dry-run preview** passed all three translation signs. The later real-arm retest validates only the Quest `+Y` → left RM base `+Z` direction sign, with off-axis motion noted below.
+- The left dry-run config remains fail-closed. Explicit left hardware mode now
+  selects the `left_rm65_teleop_adapter` section from the shared
+  `hardware.yaml`; hardware write, verified mapping and left Home remain
+  arm-specific. The left launch reads the right `normal.yaml` motion values
+  without modifying the right profile: scale 1.0, velocity 0.20 m/s, step
+  0.00050 m, anchor cap 1.0 m. The old `left_test` entry and dynamic P0
+  workspaces are retired. The shared temporary hardware workspace remains
+  `[-1,-1,0]` to `[1,1,1.5]` m and is not a final collision/workcell envelope.
+- The first normal-profile session had valid left-only command ownership and actual normal parameters. The operator confirmed clearance from fresh TCP `P0=(0.053452,-0.386812,0.477873)` m. Five Grip ACTIVE intervals occurred, including additional operator-initiated gestures during a requested pause, so only the first leftward interval is a labeled Test A; formal B/C and three orientation checks were not completed. Its Quest `+Y=81.741 mm` produced robot base `+Z=73.489 mm` at Grip release, confirming the physical-left sign but exceeding the instructed 30–60 mm gesture. Robot feedback changed another 11.383 mm in the first second after release, before a second Grip press. One later ACTIVE interval ended on `input_not_fresh`; watchdog count reached 24, mostly outside ACTIVE. The operator reported that forward/back felt unavailable, but no interval had more than +8.3 mm Quest-world X from its Grip anchor, so the intended +X 30–60 mm forward command was not recorded. This does not overturn the previous real Quest +X→base −Y evidence. The operator confirmed buttons released and both arms stationary; exact session processes were stopped, graph and TCP port cleared. Left XYZ and orientation moving-hardware validation remain incomplete. Full evidence is in the progress log.
+- Isolated `ROS_DOMAIN_ID=143`, localhost-only left Quest/feedback probe produced target, status and preview, with zero real left movep/movej/stop publishers and no Home Action client. That software phase did not start a driver or real motion.
+- On 2026-09-25, a single left RM driver supplied real six-joint and TCP feedback at about 198 Hz, and the onsite operator confirmed both arms remained stationary. The left adapter/TCP/bridge/monitor were started in `dry_run` on domain 42. Live graph checks before, during and after Quest gestures showed **zero publishers** on left movep, movej, and stop topics and zero Home Action clients. The first driver attempt revealed that global `__node:=rm_driver` also renames its internal UDP node; restarting only that driver without the node remap produced unique `/left/rm_driver` and `/left/udp_publish_node`. No left `rm_control`, Home goal, or robot motion was started.
+- Real Quest left physical fields were confirmed: Grip=`press_middle`, index=`press_index`, X=`button_lower`, Y=`button_upper`; X/Y remain unbound. With the headset worn, dry-run preview signs against the real left TCP anchor passed forward `Quest +X→left -Y`, left `Quest +Y→left +Z`, and up `Quest +Z→left -X`. A small wrist rotation produced 27.418° raw Quest and 27.435° preview rotation, with 0.088° error versus the mapped quaternion prediction. An earlier forward trial without wearing the headset was excluded as invalid physical-direction evidence. No q/-q flip occurred in the live rotation interval.
+- The initial dry-run preflight found simultaneous Quest Pose/Inputs gaps up to about 1.425 s against unchanged 200 ms timeouts. The operator then authorized one bounded +Z 50 mm hardware attempt despite the known Quest dropout risk. A temporary, untracked P0-centered workspace and explicit safe-profile hardware launch gate were prepared; the adapter package built and focused tests passed. Command ownership was valid, but Quest Pose/Inputs later had a simultaneous **236.648 s** receive gap, and Ubuntu Wi-Fi/SSH became intermittently unreachable. That attempt ended **NO-GO before Grip or robot motion**. The read-only trace recorded zero Grip-active and zero adapter ACTIVE samples, with maximum observed TCP distance from P0 0.164 mm. The operator confirmed both arms stationary and disconnected Quest; the test launch, TCP endpoint, trace and left driver were stopped and port 10000 closed. See `docs/progress/left-arm-teleop.md` for the exact evidence.
+- In the separately authorized retest, the operator reconfirmed a fresh +Z 50 mm gripper path and right-arm separation. A new untracked workspace was generated from fresh `P0=(0.0943349972, -0.4110639989, 0.5532339811)` m. The left-only hardware graph had one adapter movep/stop publisher and one left-driver subscriber for each, zero movej publishers and no Home Action client. Real Quest Grip held `ACTIVE` for about 5.42 s; raw Quest `+Y` reached about +29.9 mm relative to the active start and real left RM `+Z` peaked at +5.562 mm. Fresh stable P1 gave `(dx,dy,dz)=(+3.420,+0.515,+4.176)` mm, total 5.422 mm. The operator observed robot physical-left motion and released Grip without emergency stop. Release exited `ACTIVE` with `deadman_released`, and the arm settled with about 1.14 mm net TCP change after release. No watchdog occurred **during** `ACTIVE`; later input-stale events remain an open issue. This validates only the **Quest +Y → left RM +Z direction sign**. Quest Z also moved during the human gesture, producing material robot X drift; pure single-axis tracking and the 50 mm target were not validated. Home, other axes, orientation, gripper and dual-arm hardware remain pending. All retest ROS processes and the TCP listener were stopped afterward.
+- A second, explicit `left_test` profile was added solely for left hardware scale validation (`translation_scale=1.0`, `max_velocity_mps=0.02`, `max_step_m=0.00010`, anchor cap 0.051 m); right profiles and the left dry-run default were unchanged. Build and focused 18/18 Python tests passed. The operator reconfirmed a fresh gripper +Z 50 mm path from `P0=(0.0977410004, -0.4105879962, 0.5573610067)` m. Left-only command ownership was valid; the session workspace retained X/Y ±5 mm and Z −5 to +50.1 mm. One real leftward gesture entered `ACTIVE` for 1.114 s, then the adapter **stopped in FAULT (`workspace_violation`)**, with zero watchdog increments during ACTIVE. At the fault, raw Quest deviation was approximately `(X,Y,Z)=(+5.244,+9.583,+2.528)` mm; the configured `-Quest X → robot Y` mapping predicts a Y target about 0.18 mm beyond the −5 mm workspace edge. The robot stayed inside the envelope and settled at P0 delta `(-2.296,-3.389,+2.026)` mm, total 4.567 mm: +Z direction sign still passed, **45–50 mm scale did not**. Robot TCP changed about 4.125 mm after FAULT before settling; Grip was released about 7.10 s later, so its 0.012 mm release-to-stable residual is **not** an ACTIVE Grip-stop measurement. The onsite operator confirmed both arms stationary without emergency stop. The exact launch, TCP/bridge/monitor/trace and driver were stopped; graph and port 10000 were clear. The ±5 mm gate and timeout settings were not widened. See `docs/progress/left-arm-teleop.md` for synchronized Quest, preview, and robot samples and stop timing.
+- A separately authorized same-session XYZ attempt increased only test-only `left_test` to scale `1.0`, velocity `0.03 m/s`, step `0.00015 m`, radial anchor cap `0.070 m`, with a fresh-P0 ±70 mm local cube. Right profiles, Home-disabled state, and watchdogs were unchanged; adapter build, focused Python **18/18**, and related CTest **4/4** passed. Five seconds of static feedback showed `(dX,dY,dZ)=(0.000,0.000,+0.006)` mm median drift, with no clear +X/down sag. Left-only graph ownership remained unique. Test A Quest left `+Y=56.216 mm` produced preview `+Z=56.049 mm` and stable real `+Z=56.074 mm`; ACTIVE Grip release stopped the arm with **1.103 mm** release-to-stable TCP change. Test B Quest forward `+X=70.496 mm` produced preview `−Y=67.888 mm` and stable real `−Y=66.812 mm`, but exceeded the 70 mm radial anchor cap and latched `FAULT/anchor_distance_violation` before Grip release. The robot changed another **11.429 mm** after the fault stop request, a material stopping-margin finding. No watchdog increment occurred during either ACTIVE segment. **Test C (Quest up → base −X) was not run**: FAULT remained latched and final Y was close to the session cube boundary. The operator confirmed both arms stationary, buttons released, no emergency stop; all exact session processes and port 10000 were stopped. Thus +Z and −Y direction signs have hardware evidence, while **complete XYZ hardware validation remains pending**. Full data and cross-axis analysis are in `docs/progress/left-arm-teleop.md`.
+- Four-package build and final automated regression passed: `colcon test-result --all` reported 220 tests, 0 errors, 0 failures, 0 skipped (includes 14 CTest wrapper records). Quest/TCP simultaneous input gaps remain open.
+
+## Historical right RM65 B/Home branch (superseded by X/A/B presets)
+
+- Branch `feat/recenter-home` locks physical A=`button_lower` (reserved) and B=`button_upper` (Home). Grip `press_middle` remains the 0.60/0.40 teleop deadman.
+- Hardware Home configuration: J1..J6 names `joint1` through `joint6`, operator-confirmed 2026-09-24 target degrees `[68.3241063822369, -8.489398369548377, 60.14265142722264, 31.52005176840807, 51.634258495569824, -144.10081659391062]`, hold 1.5 s, nominal maximum average joint speed 15 deg/s, action `/right/rm_group_controller/follow_joint_trajectory`. The old temporary target `[-95.605, 4.406, -80.034, -22.695, -48.462, 97.570]` is retired.
+- Home starts only from `ARMED` with released Grip, fresh inputs/joints, an available action server, and the existing exclusive command/stop path. `HOMING` suppresses Cartesian output. B release, watchdog/invalid feedback, control-period loss, or command-path loss requests cancel+stop and retains `HOMING` until an action terminal result. Success/cancel requires B release and normal Grip release-to-press reauthorization; reject/abort enters `FAULT`.
+- Four-package worktree build and automated suite after new Home configuration: 206 tests, 0 errors, 0 failures, 0 skipped (`/usr/bin/colcon test-result --test-result-base build --all --verbose`).
+- `ROS_DOMAIN_ID=143`, `ROS_LOCALHOST_ONLY=1` synthetic integration: 5 test-only Home goals, 4 cancels (B release, stale Quest pose, invalid joint feedback, shutdown), 1 success, 0 Cartesian commands, 0 real command publishers. A separate dry-run node exposed no real Home action client. No RM driver was started.
+- Whole-branch safety review fixed RED-to-GREEN findings for Home rearm/button race, invalid feedback, command-path and cycle guards, invalid-joint diagnostics, and shutdown cancel+stop delivery.
+- **Right Home execution and B-release cancel hardware validated.** The 2026-09-24 operator confirmed the new target after fresh samples differed from the earlier preflight posture; the read-only post-restart delta was within 0.008 deg on all six joints. An initial one-point goal crashed `rm_control`; the four-point RealMan-compatible trajectory subsequently returned from clearly away-from-Home postures multiple times in about 5–7 s. During a later mid-motion B release, the arm physically stopped. Because RealMan can report terminal `SUCCEEDED` after `/move_stop_cmd`, commit `ce371c0` maps that result to adapter `CANCELED` only when a local cancel was pending. The final operator-provided status sample showed `home_action_state=CANCELED`, state `ARMED`, Grip and B released, both command paths ready, and no automatic `ACTIVE`. This checkpoint records the operator’s hardware observations; no robot motion was initiated by the documentation update.
+- **Quest/TCP input stability remains open (2026-09-24 observation):** A 135.0 s read-only run found three recurring watchdog events, `120 -> 123`, all `input_not_fresh`. Quest Pose and Inputs simultaneously had 311–343 ms receive gaps beyond their 200 ms timeouts, and status briefly entered `REARM_REQUIRED` three times. Robot/joint feedback stayed below 100 ms; the target bridge kept publishing about 50 Hz during raw Quest gaps. No timeout or motion setting was changed. This remains a separate stability issue after Home hardware validation.
+
+- The targeted Ubuntu adapter build and `test_home_action_client` after the cancel compatibility change passed: CTest 1/1 executable, GTest 8/8 cases. The existing normal-success case remains `SUCCEEDED`; pending-local-cancel plus vendor success becomes `CANCELED`. The full suite was not rerun for the documentation closeout.
 
 ## Right-arm 6DoF orientation implementation
 
@@ -66,7 +170,7 @@
 - 来源：`/q2r_right_hand_inputs.press_middle`。
 - 按下阈值：`press_middle >= 0.60`；松开阈值：`press_middle <= 0.40`。
 - `0.40 < press_middle < 0.60` 保持上一状态；NaN/Inf 安全视为 released。
-- `button_lower` 不再控制右 RM65 teleop；`press_index` 当前仍未使用。
+- `button_lower` 不再控制右 RM65 teleop；`press_index` 仅供显式启动的独立右 L7 节点使用，arm adapter 不读取它。
 - 安全状态机语义不变：release 立即退出 ACTIVE/stop，数据恢复仍必须 release → press 重新授权。
 
 ## 版本化 motion profiles
@@ -101,8 +205,8 @@ field-tested tuning value / pending workspace and stopping-margin review，不�
 - 真实 RM65 orientation 的定量验收：逐轴精确角度、tracking error、overshoot、
   stopping distance、长时间静止抖动和更长时间连续运行记录。
 - 更系统的组合 rotation 与 translation + rotation 定量验证。
-- 夹爪。
-- 左臂与双臂。
+- 右 L7 的本版 Quest toggle、双 RM65 同场可用性、SDK/右 driver 共存与异常恢复验收；SDK 单独连接、反馈和张合方向已由现场操作者确认，左夹爪仍未接入。
+- 左臂 −X 真机映射、故障停机余量、其他轴和双臂真机验收。
 - 全部真实断流场景和长期网络抖动。
 - 真机 deadman 停止余量的系统化验收。
 - 更完整的工作空间/碰撞约束。

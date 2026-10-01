@@ -26,6 +26,7 @@ setup(
             'left_arm_controller = q2r2_bringup.left_arm_controller:main',
             'right_arm_controller = q2r2_bringup.right_arm_controller:main',
             'quest_right_target_bridge = q2r2_bringup.quest_right_target_bridge:main',
+            'quest_target_bridge = q2r2_bringup.quest_right_target_bridge:main',
         ],
     },
 )

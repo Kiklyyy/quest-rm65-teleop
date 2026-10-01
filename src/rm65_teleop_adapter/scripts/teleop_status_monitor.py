@@ -6,13 +6,14 @@ import rclpy
 from geometry_msgs.msg import Pose, PoseStamped
 from quest2ros.msg import OVR2ROSInputs
 from rclpy.node import Node
+from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 
 from teleop_status_logic import TeleopStatusModel
 
 
 class TeleopStatusMonitor(Node):
-    """Read-only summary of right-arm teleoperation topic health."""
+    """Read-only summary of one configured arm teleoperation topic health."""
 
     def __init__(self) -> None:
         super().__init__("teleop_status_monitor")
@@ -28,31 +29,37 @@ class TeleopStatusMonitor(Node):
 
         self._quest_subscription = self.create_subscription(
             PoseStamped,
-            "/q2r_right_hand_pose",
+            self.declare_parameter("quest_pose_topic", "/q2r_right_hand_pose").value,
             lambda _: self._mark("quest"),
             10,
         )
         self._inputs_subscription = self.create_subscription(
             OVR2ROSInputs,
-            "/q2r_right_hand_inputs",
+            self.declare_parameter("inputs_topic", "/q2r_right_hand_inputs").value,
             lambda _: self._mark("inputs"),
             10,
         )
         self._target_subscription = self.create_subscription(
             PoseStamped,
-            "/quest_right_target_pose",
+            self.declare_parameter("target_topic", "/quest_right_target_pose").value,
             lambda _: self._mark("target"),
             10,
         )
         self._robot_subscription = self.create_subscription(
             Pose,
-            "/right/rm_driver/udp_arm_position",
+            self.declare_parameter("robot_pose_topic", "/right/rm_driver/udp_arm_position").value,
             lambda _: self._mark("robot"),
+            10,
+        )
+        self._joint_subscription = self.create_subscription(
+            JointState,
+            self.declare_parameter("joint_state_topic", "/right/joint_states").value,
+            lambda _: self._mark("joints"),
             10,
         )
         self._status_subscription = self.create_subscription(
             String,
-            "/right/rm65_teleop/status",
+            self.declare_parameter("status_topic", "/right/rm65_teleop/status").value,
             self._status_callback,
             10,
         )

@@ -88,11 +88,12 @@ def test_hardware_mode_loads_base_then_selected_profile(profile):
     ]
 
 
-def test_invalid_motion_profile_is_rejected():
+@pytest.mark.parametrize("profile", ["turbo", "left_test"])
+def test_invalid_motion_profile_is_rejected(profile):
     module = load_launch_module()
 
     with pytest.raises(RuntimeError, match="motion_profile"):
-        module._validate_arguments(context_for(motion_profile="turbo"))
+        module._validate_arguments(context_for(motion_profile=profile))
 
 
 def test_dry_run_does_not_load_hardware_or_motion_profile_config():
@@ -114,10 +115,11 @@ def test_profile_contains_only_allowed_motion_parameters(profile):
     assert parameters == EXPECTED_PROFILES[profile]
 
 
-def load_yaml_parameters(path: Path):
+def load_yaml_parameters(path: Path, node="rm65_teleop_adapter"):
     with path.open(encoding="utf-8") as stream:
         document = yaml.safe_load(stream)
-    return document["rm65_teleop_adapter"]["ros__parameters"]
+    common = document.get("/**", {}).get("ros__parameters", {})
+    return {**common, **document[node]["ros__parameters"]}
 
 
 def test_base_configs_define_exact_orientation_envelope():
@@ -125,10 +127,42 @@ def test_base_configs_define_exact_orientation_envelope():
         "rotation_scale": 1.0,
         "max_angular_velocity_rad_s": 1.5707963267948966,
         "max_angular_step_rad": 0.01,
-        "max_anchor_angle_rad": 1.5707963267948966,
         "unexpected_orientation_jump_rad": 0.7853981633974483,
     }
     for config_name in ("dry_run.yaml", "hardware.yaml"):
         params = load_yaml_parameters(PACKAGE_ROOT / "config" / config_name)
         for key, value in expected.items():
             assert params[key] == pytest.approx(value, abs=1.0e-12)
+    assert load_yaml_parameters(PACKAGE_ROOT / "config" / "dry_run.yaml")[
+        "max_anchor_angle_rad"] == pytest.approx(1.5707963267948966)
+    assert load_yaml_parameters(PACKAGE_ROOT / "config" / "hardware.yaml")[
+        "max_anchor_angle_rad"] == pytest.approx(4.71238898038469)
+    assert load_yaml_parameters(
+        PACKAGE_ROOT / "config" / "hardware.yaml", "left_rm65_teleop_adapter"
+    )["max_anchor_angle_rad"] == pytest.approx(1.5707963267948966)
+
+
+def test_home_is_hardware_only_and_uses_confirmed_configuration():
+    hardware = load_yaml_parameters(PACKAGE_ROOT / "config" / "hardware.yaml")
+    left_hardware = load_yaml_parameters(
+        PACKAGE_ROOT / "config" / "hardware.yaml", "left_rm65_teleop_adapter")
+    dry_run = load_yaml_parameters(PACKAGE_ROOT / "config" / "dry_run.yaml")
+    assert dry_run["home_enabled"] is False
+    assert hardware["home_enabled"] is True
+    assert left_hardware["home_button_field"] == "upper"
+    assert hardware["home_hold_seconds"] == 1.5
+    assert hardware["home_speed_deg_s"] == 50.0
+    assert hardware["quest_joint_preset_speed_deg_s"] == left_hardware["home_speed_deg_s"]
+    assert hardware["quest_right_first"] == [
+        69.095, -32.717, 95.243, 34.124, 37.393, 159.266]
+    assert hardware["quest_right_second"] == [
+        83.357, 24.735, 67.241, -2.984, 73.23, -106.441]
+    assert hardware["quest_right_last"] == [
+        101.488, 45.519, 51.837, 0.307, 81.795, -170.454]
+    assert hardware["home_joint_names"] == [f"joint{i}" for i in range(1, 7)]
+    assert hardware["home_action_name"] == "/right/rm_group_controller/follow_joint_trajectory"
+    for profile in ("safe", "normal", "fast"):
+        assert not (set(load_yaml_parameters(PROFILE_DIR / f"{profile}.yaml")) &
+                    {"home_enabled", "home_button_field", "home_hold_seconds", "home_speed_deg_s",
+                     "quest_joint_preset_speed_deg_s",
+                     "home_joint_degrees", "home_joint_names", "home_action_name"})

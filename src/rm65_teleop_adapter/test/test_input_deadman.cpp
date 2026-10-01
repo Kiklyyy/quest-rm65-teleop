@@ -23,6 +23,7 @@ CycleInput fresh_input()
   input.target_fresh = true;
   input.quest_pose_fresh = true;
   input.inputs_fresh = true;
+  input.home_inputs_fresh = true;
   input.robot_fresh = true;
   input.dt_seconds = 0.01;
   input.quest_orientation = rm65_teleop_adapter::QuaternionXyzw{0.0, 0.0, 0.0, 1.0};
@@ -157,5 +158,27 @@ TEST(QuestInputDeadman, HeldTriggerDoesNotResumeAfterInputRecovery)
   input.press_middle = 0.60;
   cycle.enable = deadman.update(input);
   EXPECT_EQ(logic.update(cycle).state, AdapterState::ACTIVE);
+}
+
+TEST(QuestInputDeadman, GripCannotActivateCartesianDuringHoming)
+{
+  QuestInputDeadman deadman;
+  AdapterLogic logic;
+  auto cycle = fresh_input();
+  cycle.dt_seconds = 0.5;
+  cycle.joint_state_fresh = true;
+  cycle.joint_state_valid = true;
+  cycle.home_action_ready = true;
+  cycle.home_plan_valid = true;
+  ASSERT_EQ(logic.update(cycle).state, AdapterState::ARMED);
+  cycle.home_button_pressed = true;
+  for (int i=0; i<3; ++i) logic.update(cycle);
+  ASSERT_EQ(logic.state(), AdapterState::HOMING);
+  FakeInputs grip;
+  grip.press_middle = 0.60F;
+  cycle.enable = deadman.update(grip);
+  const auto output = logic.update(cycle);
+  EXPECT_EQ(output.state, AdapterState::HOMING);
+  EXPECT_FALSE(output.command);
 }
 }  // namespace

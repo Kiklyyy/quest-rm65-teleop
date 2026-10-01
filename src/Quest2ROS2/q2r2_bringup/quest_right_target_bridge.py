@@ -38,9 +38,9 @@ def update_analog_deadman(previous: bool, value: float) -> bool:
     return bool(previous)
 
 
-def build_target_pose(target: tuple[float, float, float], stamp) -> PoseStamped:
+def build_target_pose(target: tuple[float, float, float], stamp, frame_id: str = WORLD_FRAME) -> PoseStamped:
     message = PoseStamped()
-    message.header.frame_id = WORLD_FRAME
+    message.header.frame_id = frame_id
     message.header.stamp = stamp
     message.pose.position.x, message.pose.position.y, message.pose.position.z = target
     message.pose.orientation.x = 0.0
@@ -50,11 +50,14 @@ def build_target_pose(target: tuple[float, float, float], stamp) -> PoseStamped:
     return message
 
 
-def build_target_marker(target: tuple[float, float, float], stamp) -> Marker:
+def build_target_marker(
+    target: tuple[float, float, float], stamp,
+    frame_id: str = WORLD_FRAME, marker_namespace: str = MARKER_NAMESPACE,
+) -> Marker:
     marker = Marker()
-    marker.header.frame_id = WORLD_FRAME
+    marker.header.frame_id = frame_id
     marker.header.stamp = stamp
-    marker.ns = MARKER_NAMESPACE
+    marker.ns = marker_namespace
     marker.id = MARKER_ID
     marker.type = Marker.SPHERE
     marker.action = Marker.ADD
@@ -75,14 +78,21 @@ class QuestRightTargetBridge(Node):
         super().__init__("quest_right_target_bridge")
         self._logic = QuestRightTargetLogic()
         self._deadman_pressed = False
+        pose_topic = self.declare_parameter("pose_topic", POSE_TOPIC).value
+        inputs_topic = self.declare_parameter("inputs_topic", INPUTS_TOPIC).value
+        target_topic = self.declare_parameter("target_topic", TARGET_POSE_TOPIC).value
+        marker_topic = self.declare_parameter("marker_topic", TARGET_MARKER_TOPIC).value
+        self._frame_id = self.declare_parameter("frame_id", WORLD_FRAME).value
+        self._marker_namespace = self.declare_parameter(
+            "marker_namespace", MARKER_NAMESPACE).value
         self._pose_subscription = self.create_subscription(
-            PoseStamped, POSE_TOPIC, self._pose_callback, 10)
+            PoseStamped, pose_topic, self._pose_callback, 10)
         self._inputs_subscription = self.create_subscription(
-            OVR2ROSInputs, INPUTS_TOPIC, self._inputs_callback, 10)
+            OVR2ROSInputs, inputs_topic, self._inputs_callback, 10)
         self._target_pose_publisher = self.create_publisher(
-            PoseStamped, TARGET_POSE_TOPIC, 10)
+            PoseStamped, target_topic, 10)
         self._target_marker_publisher = self.create_publisher(
-            Marker, TARGET_MARKER_TOPIC, 10)
+            Marker, marker_topic, 10)
         self._timer = self.create_timer(TIMER_PERIOD_S, self._timer_callback)
 
     def _pose_callback(self, msg: PoseStamped) -> None:
@@ -104,8 +114,9 @@ class QuestRightTargetBridge(Node):
         self._logic.check_timeout(time.monotonic())
         stamp = self.get_clock().now().to_msg()
         target = self._logic.target
-        self._target_pose_publisher.publish(build_target_pose(target, stamp))
-        self._target_marker_publisher.publish(build_target_marker(target, stamp))
+        self._target_pose_publisher.publish(build_target_pose(target, stamp, self._frame_id))
+        self._target_marker_publisher.publish(build_target_marker(
+            target, stamp, self._frame_id, self._marker_namespace))
 
 
 def main(args=None) -> None:
