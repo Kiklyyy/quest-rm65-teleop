@@ -12,7 +12,7 @@ def test_runtime_source_has_no_control_capability():
         'FollowJointTrajectory', 'movep_canfd', 'movej_canfd', 'move_stop_cmd',
         'finger_move',
     }
-    for source in (ROOT / 'rm65_teleop_dashboard').glob('*.py'):
+    for source in (ROOT / 'rm65_teleop_dashboard').rglob('*.py'):
         tree = ast.parse(source.read_text(encoding='utf-8'))
         for node in ast.walk(tree):
             if isinstance(node, ast.Name):

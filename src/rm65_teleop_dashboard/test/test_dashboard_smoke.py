@@ -17,6 +17,7 @@ if os.name == "nt":
 
 from PyQt5.QtWidgets import QApplication, QPushButton
 from PyQt5.QtGui import QFontDatabase
+from PyQt5.QtCore import Qt
 
 from rm65_teleop_dashboard.demo_data import demo_snapshot
 from rm65_teleop_dashboard.main_window import MainWindow
@@ -42,10 +43,11 @@ def test_demo_monitor_opens_updates_and_closes(application):
     assert window.isVisible()
     assert "双臂机器人遥操作监控系统" in window.windowTitle()
     assert window.demo_badge.isVisible()
-    assert window.left_arm.state_label.text() == "ACTIVE"
-    assert window.right_arm.state_label.text() == "ARMED"
-    assert len(window.left_arm.joint_rows) == 6
-    assert len(window.right_arm.joint_rows) == 6
+    arms = window.pages['arms'].arms
+    assert arms['left'].state_label.text() == "ACTIVE"
+    assert arms['right'].state_label.text() == "ARMED"
+    assert len(arms['left'].joint_rows) == 6
+    assert len(arms['right'].joint_rows) == 6
     assert not window.findChildren(QPushButton)
     window.close()
     application.processEvents()
@@ -61,9 +63,11 @@ def test_monitor_fits_supported_window_sizes(application, size):
     application.processEvents()
     assert (window.width(), window.height()) == size
     assert window.centralWidget().width() <= window.width()
-    assert window.columns.width() <= window.width()
-    for index in (0, 2):
-        area = window.columns.widget(index)
+    assert window.stack.width() <= window.width()
+    for key in window.pages:
+        window.set_page(key)
+        application.processEvents()
+        area = window.pages[key]
         assert area.widget().width() <= area.viewport().width()
     assert not window.grab().isNull()
     window.close()
@@ -74,10 +78,11 @@ def test_stale_adapter_cannot_display_live_active_or_ready(application):
     left = replace(snapshot.left, status_health=StreamHealth("STALE", 1100, 10.0))
     window = MainWindow()
     window.update_snapshot(replace(snapshot, left=left))
-    assert window.left_arm.state_label.text() == "STALE"
-    assert "READY" not in window.left_arm.cart.text()
-    assert "READY" not in window.left_arm.home.text()
-    assert window.safety_card.fields["command_path_ready"][0].text() == "STALE"
+    arm = window.pages['arms'].arms['left']
+    assert arm.state_label.text() == "STALE"
+    assert "READY" not in arm.cart.text().upper()
+    assert "READY" not in arm.home.text().upper()
+    assert window.pages['safety'].sections['left'].settings.fields["command_path_ready"].text() == "STALE"
     window.close()
 
 
@@ -90,10 +95,15 @@ def test_event_filter_renders_only_selected_level(application):
     ))
     window = MainWindow()
     window.update_snapshot(snapshot)
-    assert window.events_table.rowCount() == 3
-    window.log_filter.setCurrentText("Warning")
-    assert window.events_table.rowCount() == 1
-    assert window.events_table.item(0, 1).text() == "WARN"
-    window.log_filter.setCurrentText("All")
-    assert window.events_table.rowCount() == 3
+    page = window.pages['events']
+    window.set_page('events')
+    assert page.table.rowCount() == 3
+    page.filter.select("Warning")
+    assert page.table.rowCount() == 1
+    assert page.table.item(0, 1).data(Qt.UserRole) == "WARN"
+    page.filter.select("Info")
+    assert page.table.rowCount() == 1
+    assert page.table.item(0, 1).data(Qt.UserRole) == "INFO"
+    page.filter.select("All")
+    assert page.table.rowCount() == 3
     window.close()

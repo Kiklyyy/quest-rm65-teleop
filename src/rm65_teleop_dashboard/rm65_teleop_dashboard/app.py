@@ -6,6 +6,17 @@ from pathlib import Path
 import signal
 import sys
 import time
+from .view_config import PAGE_KEYS
+
+
+def argument_parser():
+    parser = argparse.ArgumentParser(description='Read-only Dual-Arm VR Teleoperation Dashboard')
+    parser.add_argument('--demo', action='store_true', help='Clearly labelled synthetic data, no ROS')
+    parser.add_argument('--screenshot', type=Path, help='Save a PNG after one second, then exit')
+    parser.add_argument('--page', choices=PAGE_KEYS, default='overview', help='Initial monitoring page')
+    parser.add_argument('--width', type=int, default=1920)
+    parser.add_argument('--height', type=int, default=1080)
+    return parser
 
 
 def main(args=None):
@@ -14,11 +25,7 @@ def main(args=None):
     if '--ros-args' in raw:
         boundary = raw.index('--ros-args')
         ros_args, raw = raw[boundary:], raw[:boundary]
-    parser = argparse.ArgumentParser(description='Read-only Dual-Arm VR Teleoperation Dashboard')
-    parser.add_argument('--demo', action='store_true', help='Clearly labelled synthetic data, no ROS')
-    parser.add_argument('--screenshot', type=Path, help='Save a PNG after one second, then exit')
-    parser.add_argument('--width', type=int, default=1920)
-    parser.add_argument('--height', type=int, default=1080)
+    parser = argument_parser()
     options = parser.parse_args(raw)
     if options.width < 1280 or options.height < 720:
         parser.error('window size must be at least 1280 x 720')
@@ -56,6 +63,7 @@ def main(args=None):
     app.setApplicationName('Dual-Arm VR Teleoperation Dashboard')
     window = MainWindow()
     window.resize(options.width, options.height)
+    window.set_page(options.page)
     domain = os.environ.get('ROS_DOMAIN_ID', '0')
     store = SnapshotStore(domain_id=domain)
     monitor = None

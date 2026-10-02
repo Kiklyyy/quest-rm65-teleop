@@ -31,6 +31,13 @@ PyQt5 和 rclpy，订阅真实 Quest、双 RM65 反馈、adapter JSON 和右 Lin
 RM driver、`rm_control`、Quest bringup 或灵巧手 SDK。六个 RM65 关节与右手
 七通道明确区分；左末端设备显示未配置。后台 ROS 线程更新快照，Qt 以 10 Hz 刷新。
 
+浅色工作站界面使用侧栏导航：总览、双臂、VR 控制器、安全、灵巧手和事件。
+总览聚焦系统状态与四项关键指标；位姿、关节和诊断信息在独立页面中查看。
+`--page overview|arms|controllers|safety|linkerhand|events` 可选择启动页面，
+用于演示和逐页截图。模型、ROS 采集、Demo 数据和只读边界保持原样。
+见[视觉重设计记录](docs/progress/teleop-dashboard-redesign.md)及
+[新版总览截图](docs/screenshots/apple-style/overview-1920x1080.png)。
+
 先检查 Ubuntu 系统 Qt 包；缺少时优先使用 apt 的 `python3-pyqt5`，不要安装到 Conda：
 
 ```bash
@@ -51,7 +58,7 @@ PYTHONPATH=src/rm65_teleop_dashboard \
 QT_QPA_PLATFORM=offscreen \
 PYTHONPATH=src/rm65_teleop_dashboard \
   /usr/bin/python3 -m rm65_teleop_dashboard.app \
-  --demo --screenshot /tmp/teleop-dashboard.png
+  --demo --page overview --screenshot /tmp/teleop-dashboard.png
 ```
 
 正常监控在原双臂系统之外另开一个终端，使用相同 ROS domain：
