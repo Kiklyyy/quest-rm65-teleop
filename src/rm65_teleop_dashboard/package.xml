@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rm65_teleop_dashboard</name>
+  <version>1.0.0</version>
+  <description>Read-only ROS monitoring with explicit software process lifecycle management.</description>
+  <maintainer email="lh@todo.todo">Quest RM65 maintainers</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_python</buildtool_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>quest2ros</exec_depend>
+  <exec_depend>python3-pyqt5</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <test_depend>python3-pytest</test_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>

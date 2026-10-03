@@ -1,0 +1,117 @@
+name: Teleop dashboard Humble validation
+on:
+  push:
+    branches: [feat/teleop-dashboard]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  humble:
+    runs-on: ubuntu-22.04
+    container: ros:humble-ros-base-jammy
+    timeout-minutes: 30
+    env:
+      ROS_DOMAIN_ID: '143'
+      ROS_LOCALHOST_ONLY: '1'
+      QT_QPA_PLATFORM: offscreen
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+      TZ: Asia/Shanghai
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: System Python and build dependencies (isolated CI container)
+        run: |
+          /usr/bin/python3 -c "import PyQt5; print(PyQt5.__file__)" || \
+            echo 'python3-pyqt5 is missing in the isolated CI container; installing the apt system package.'
+          apt-get update -qq
+          apt-get install -y --no-install-recommends build-essential cmake git \
+            python3-colcon-common-extensions python3-pyqt5 python3-pytest \
+            python3-numpy python3-yaml fonts-noto-cjk \
+            ros-humble-control-msgs ros-humble-tf2-ros ros-humble-tf-transformations \
+            ros-humble-ament-cmake-gtest ros-humble-ament-cmake-pytest \
+            ros-humble-ament-copyright ros-humble-ament-flake8 ros-humble-ament-pep257
+          /usr/bin/python3 -c "import PyQt5; print(PyQt5.__file__)"
+      - name: Build official messages only (no vendor driver or SDK)
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          git clone --filter=blob:none --no-checkout https://github.com/RealManRobot/ros2_rm_robot.git /tmp/realman
+          git -C /tmp/realman sparse-checkout set rm_ros_interfaces
+          git -C /tmp/realman checkout c941b565e4f9174afa36561f143ef5fbbb744750
+          /usr/bin/colcon --log-base log/interfaces build --base-paths /tmp/realman/rm_ros_interfaces \
+            --build-base build/interfaces --install-base install/interfaces --symlink-install \
+            --packages-select rm_ros_interfaces --cmake-args -DBUILD_TESTING=OFF
+      - name: Five-package workspace build, then dashboard selected build
+        id: workspace_build
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/interfaces/setup.bash
+          /usr/bin/colcon build --symlink-install --packages-select \
+            quest2ros ros_tcp_endpoint q2r2_bringup rm65_teleop_adapter rm65_teleop_dashboard
+          source install/setup.bash
+          /usr/bin/colcon build --symlink-install --packages-select rm65_teleop_dashboard
+      - name: Dashboard tests and isolated ROS receive probe
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/interfaces/setup.bash
+          source install/setup.bash
+          /usr/bin/python3 -m pytest -p no:cacheprovider src/rm65_teleop_dashboard/test -q \
+            --junitxml=dashboard-tests.xml
+          /usr/bin/python3 tools/dashboard_ros_probe.py
+      - name: Managed Dry Run lifecycle (no hardware packages or SDK)
+        if: ${{ !cancelled() && steps.workspace_build.outcome == 'success' }}
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/interfaces/setup.bash
+          source install/setup.bash
+          /usr/bin/python3 tools/dashboard_runtime_probe.py
+      - name: Existing workspace regression
+        if: ${{ !cancelled() && steps.workspace_build.outcome == 'success' }}
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/interfaces/setup.bash
+          source install/setup.bash
+          # This baseline test requires the unversioned onsite RS485 SDK.
+          # Do not install/connect that SDK on CI; retain every software test.
+          /usr/bin/colcon test --packages-select quest2ros ros_tcp_endpoint q2r2_bringup rm65_teleop_adapter rm65_teleop_dashboard \
+            --return-code-on-test-failure --event-handlers console_direct+ \
+            --ctest-args -E '^test_right_linkerhand_transport$'
+          /usr/bin/colcon test-result --verbose
+      - name: Render seven workstation pages and exercise offline ROS entry point
+        if: always()
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/interfaces/setup.bash
+          source install/setup.bash
+          mkdir -p captures/runtime-management
+          for page in overview runtime-control arms controllers safety linkerhand events; do
+            /usr/bin/python3 -m rm65_teleop_dashboard.app --demo \
+              --page "$page" --screenshot "captures/runtime-management/${page}-1920x1080.png"
+          done
+          /usr/bin/python3 -m rm65_teleop_dashboard.app --demo --page overview \
+            --width 1366 --height 768 --screenshot captures/runtime-management/overview-1366x768.png
+          # Exercise the installed ROS entry point without any robot/Quest
+          # sources: it must render OFFLINE and shut down its executor cleanly.
+          ros2 run rm65_teleop_dashboard teleop_dashboard \
+            --screenshot captures/dashboard-ros-offline.png
+          # A desktop process without a sourced ROS shell must bootstrap explicitly.
+          env -i PATH=/usr/bin:/bin HOME="$HOME" ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1 \
+            QT_QPA_PLATFORM=offscreen PYTHONPATH="$PWD/src/rm65_teleop_dashboard" \
+            /usr/bin/python3 -m rm65_teleop_dashboard.app \
+            --workspace-setup "$PWD/install/setup.bash" --page runtime-control \
+            --screenshot captures/dashboard-unsourced-desktop.png
+      - name: Preserve verification outputs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: teleop-dashboard-validation
+          path: |
+            captures/
+            dashboard-tests.xml
+            build/**/test_results/
+            log/
