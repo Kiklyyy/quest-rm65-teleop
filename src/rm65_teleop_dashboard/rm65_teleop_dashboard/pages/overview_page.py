@@ -66,8 +66,10 @@ class OverviewPage(Page):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        if self.compact:
+            self.body.setSpacing(14)
         for card in self.findChildren(Card):
-            card.body.setContentsMargins(22, 15 if self.compact else 24, 22, 15 if self.compact else 24)
+            card.body.setContentsMargins(22, 12 if self.compact else 24, 22, 12 if self.compact else 24)
             card.body.setSpacing(10 if self.compact else 18)
 
     def update_runtime(self, runtime):

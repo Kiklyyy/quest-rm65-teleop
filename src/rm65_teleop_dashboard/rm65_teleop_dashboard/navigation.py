@@ -1,4 +1,4 @@
-"""Six display-only destinations with original monochrome vector icons."""
+"""Seven workstation destinations with original monochrome vector icons."""
 from PyQt5.QtCore import Qt, QSize, QRectF, QPointF
 from PyQt5.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QPainterPath
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QListWidget, QListWidgetItem, QVBoxLayout

@@ -58,6 +58,7 @@ class RuntimeService:
         self._snapshot = RuntimeSnapshot()
         self._closing = threading.Event()
         self._thread = None
+        self._observer_error = ''
 
     @classmethod
     def demo(cls):
@@ -100,16 +101,22 @@ class RuntimeService:
             try:
                 self.cycle()
             except Exception as exc:
-                self.system.error = str(exc)
-                self.system.event('RUNTIME_OBSERVER_ERROR', str(exc), 'ERROR')
-                # Failed observation must revoke any previous ready/preflight result.
-                with self._lock:
-                    self._snapshot = RuntimeSnapshot(enabled=self.enabled,
-                        system=process_info(self.system), hand=process_info(self.hand),
-                        facts=PreflightFacts(detail=str(exc)), events=tuple(self.system.events))
+                self.observation_failed(exc)
                 self.system.tick()
                 self.hand.tick()
             self._closing.wait(.5)
+
+    def observation_failed(self, exc):
+        message = str(exc)
+        if message != self._observer_error:
+            self.system.event('RUNTIME_OBSERVER_ERROR', message, 'ERROR')
+        self._observer_error = self.system.error = message
+        self.system.set_ready(False)
+        self.hand.set_ready(False)
+        with self._lock:
+            self._snapshot = RuntimeSnapshot(enabled=self.enabled,
+                system=process_info(self.system), hand=process_info(self.hand),
+                facts=PreflightFacts(detail=message), events=tuple(self.system.events))
 
     def cycle(self):
         self.system.tick()
@@ -132,6 +139,11 @@ class RuntimeService:
         graph = self.graph_provider()
         data = self.snapshot_provider()
         facts = self._facts(graph, data)
+        if self._observer_error:
+            if self.system.error == self._observer_error:
+                self.system.error = ''
+            self._observer_error = ''
+            self.system.event('RUNTIME_OBSERVER_RECOVERED')
         # At most one startup per observation. Every subsequent queued click
         # receives fresh graph/process evidence on the next worker iteration.
         try:

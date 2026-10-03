@@ -9,10 +9,10 @@ from rm65_teleop_dashboard.app import argument_parser
 from rm65_teleop_dashboard.view_config import PAGE_KEYS
 
 
-def test_page_argument_accepts_six_pages_and_rejects_invalid():
+def test_page_argument_accepts_seven_pages_and_rejects_invalid():
     parser = argument_parser()
     assert parser.parse_args(['--demo']).page == 'overview'
-    for page in ('overview', 'arms', 'controllers', 'safety', 'linkerhand', 'events'):
+    for page in PAGE_KEYS:
         assert parser.parse_args(['--demo', '--page', page]).page == page
     with pytest.raises(SystemExit) as error:
         parser.parse_args(['--demo', '--page', 'invalid'])

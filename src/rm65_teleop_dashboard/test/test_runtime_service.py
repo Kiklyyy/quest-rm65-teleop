@@ -101,3 +101,14 @@ def test_close_without_worker_waits_and_escalates_owned_handle():
     runtime.close()
     assert handle.signals == [2, 15]
     assert runtime.system.handle is None
+
+
+def test_repeated_observation_error_logs_once_and_recovers():
+    runtime = service()
+    runtime.observation_failed(RuntimeError('graph unavailable'))
+    runtime.observation_failed(RuntimeError('graph unavailable'))
+    assert sum('RUNTIME_OBSERVER_ERROR' in e.message for e in runtime.system.events) == 1
+    assert not runtime.snapshot().facts.graph_ok
+    runtime.cycle()
+    assert runtime.system.error == ''
+    assert sum('RUNTIME_OBSERVER_RECOVERED' in e.message for e in runtime.system.events) == 1

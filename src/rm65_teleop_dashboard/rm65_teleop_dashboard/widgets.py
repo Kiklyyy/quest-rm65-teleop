@@ -1,4 +1,4 @@
-"""Presentation primitives. Every interactive element changes the view only."""
+"""Presentation primitives shared by monitoring and runtime pages."""
 import math
 from PyQt5.QtCore import Qt, QPointF, QRectF, pyqtSignal
 from PyQt5.QtGui import QColor, QPainter, QPainterPath, QPen

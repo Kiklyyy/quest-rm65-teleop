@@ -42,6 +42,7 @@ jobs:
             --build-base build/interfaces --install-base install/interfaces --symlink-install \
             --packages-select rm_ros_interfaces --cmake-args -DBUILD_TESTING=OFF
       - name: Five-package workspace build, then dashboard selected build
+        id: workspace_build
         shell: bash
         run: |
           source /opt/ros/humble/setup.bash
@@ -60,6 +61,7 @@ jobs:
             --junitxml=dashboard-tests.xml
           /usr/bin/python3 tools/dashboard_ros_probe.py
       - name: Managed Dry Run lifecycle (no hardware packages or SDK)
+        if: ${{ !cancelled() && steps.workspace_build.outcome == 'success' }}
         shell: bash
         run: |
           source /opt/ros/humble/setup.bash
@@ -67,6 +69,7 @@ jobs:
           source install/setup.bash
           /usr/bin/python3 tools/dashboard_runtime_probe.py
       - name: Existing workspace regression
+        if: ${{ !cancelled() && steps.workspace_build.outcome == 'success' }}
         shell: bash
         run: |
           source /opt/ros/humble/setup.bash
