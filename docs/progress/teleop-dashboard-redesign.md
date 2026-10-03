@@ -120,5 +120,26 @@ Ubuntu 22.04 / Humble validation uses the existing branch CI: system Python
 the normal ROS-mode offline entry point. The unchanged baseline exclusion of
 three onsite `test_right_linkerhand_transport` cases remains necessary because
 their unversioned external SDK is unavailable in CI. This revision does not
-claim onsite hardware or SDK validation. The CI result is recorded below after
-the reviewed visual source has been pushed and verified.
+claim onsite hardware or SDK validation.
+
+Verified on 2026-10-03 against application commit
+`2fd724213ae483f2a46a014e19f17bc056ba2317`. Both the push and PR runs succeeded;
+the detailed figures below come from
+[PR CI run 36998296472](https://github.com/Kiklyyy/quest-rm65-teleop/actions/runs/36998296472).
+
+| Check | Verified result |
+|---|---|
+| Runtime | Ubuntu 22.04 / ROS 2 Humble / system Python 3.10.12 / system PyQt5 |
+| Five-package build | Passed, 39.4 s |
+| Dashboard-selected build | Passed, 1.33 s |
+| Dashboard tests | 50 passed, 0 skipped, 10.83 s |
+| Five-package software regression | 318 reported tests, 0 errors, 0 failures, 0 skipped, 28.6 s |
+| Adapter CTest groups | 19/19 passed; the three onsite SDK cases remain excluded as documented above |
+| Actual ROS receive probe | 13 subscriptions, shuffled six-joint ordering, 72/198 Hz receipt, malformed JSON, stale suppression and deduplicated events passed |
+| Output endpoints and shutdown | Zero publishers/services/clients on the monitor; executor/thread/context clean shutdown passed |
+| Screenshots | All six 1920 × 1080 pages and 1366 × 768 overview captured on Ubuntu; installed normal ROS-mode offline entry point also captured and exited |
+
+Ubuntu-rendered captures were additionally reviewed for system-font differences,
+Chinese text and layout. The committed Windows captures and the Linux CI
+artifacts both preserve the intended light visual hierarchy. No new runtime
+code changes were needed after validation. PR: [#10](https://github.com/Kiklyyy/quest-rm65-teleop/pull/10).
