@@ -113,7 +113,27 @@ CI 运行五包 build/test、13 路真实 ROS 订阅 probe、POSIX sleeping fixt
 Dry Run 生命周期和未 source 桌面入口。CI 只安装 RealMan 消息，不安装真实 driver/SDK。
 现场未版本化 RS485 SDK 对应的旧 transport CTest 组继续按原 CI 边界排除。
 
-本地与 Ubuntu 的最终计数和 CI 链接在验证完成后追加，不将待运行验证写成通过。
+最终软件验证（2026-10-03，代码提交 `47e9bef8942fc82111dfd52ad2c976099cd50fd1`）：
+
+| 验证 | 结果 |
+|---|---|
+| Windows Dashboard | 99 passed，4 个预期 ROS/POSIX 平台 skip，4 subtests passed |
+| Ubuntu 22.04 / Humble Dashboard | 103 passed |
+| 五包 colcon build 与 Dashboard 单包 build | 全部成功 |
+| 五包 colcon test-result | 371 tests，0 errors，0 failures，0 skipped（上述 SDK CTest 组未纳入） |
+| 真实 ROS 接收 probe | 13 subscriptions；0 publishers、services、clients；线程正常退出 |
+| Linux process lifecycle | SIGINT 正常退出、超时 TERM/KILL、leader 退出后的后代清理；外部进程保留 |
+| 实际 dual launch Dry Run | 两侧 dry_run 状态有效；无 driver/control/hand 节点及机器人命令 topic |
+| Dry Run Stop | 自有启动组退出，TCP 10000 释放 |
+| 无 source 桌面入口 / 离线 ROS 入口 | 渲染并干净退出 |
+
+Ubuntu PR 验证：[run 37128755438](https://github.com/Kiklyyy/quest-rm65-teleop/actions/runs/37128755438)，
+全部步骤成功；对应 push 验证也成功。CI artifact `teleop-dashboard-validation`
+包含 JUnit、colcon 输出和 Ubuntu 截图。首次 Ubuntu 字体检查暴露的 1280×720 总览高度问题
+已通过缩小内部留白修复，未放宽布局断言；同一异常重复产生事件的问题也已补测试修复。
+
+静态审计确认 ROS 层仍只有 13 路订阅，新增 process 层没有机器人 ROS 输出端点。
+整个开发与验证过程没有启动真实硬件。硬件模式的命令与确认门禁已测试，现场硬件运行未验证。
 
 七页 1920×1080，以及总览/运行控制 1366×768 已生成并逐张检查。
 1920 运行页全部内容可见；1366 运行页使用明确的纵向滚动，未出现水平溢出或重叠。
