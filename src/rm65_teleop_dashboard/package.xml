@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>rm65_teleop_dashboard</name>
-  <version>0.1.0</version>
-  <description>Read-only dual RM65 and Quest desktop monitoring dashboard.</description>
+  <version>1.0.0</version>
+  <description>Read-only ROS monitoring with explicit software process lifecycle management.</description>
   <maintainer email="lh@todo.todo">Quest RM65 maintainers</maintainer>
   <license>Apache-2.0</license>
   <buildtool_depend>ament_python</buildtool_depend>

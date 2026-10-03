@@ -10,12 +10,13 @@ from .view_config import PAGE_KEYS
 
 
 def argument_parser():
-    parser = argparse.ArgumentParser(description='Read-only Dual-Arm VR Teleoperation Dashboard')
+    parser = argparse.ArgumentParser(description='Dual-Arm Teleoperation Monitoring and Runtime Management')
     parser.add_argument('--demo', action='store_true', help='Clearly labelled synthetic data, no ROS')
     parser.add_argument('--screenshot', type=Path, help='Save a PNG after one second, then exit')
     parser.add_argument('--page', choices=PAGE_KEYS, default='overview', help='Initial monitoring page')
     parser.add_argument('--width', type=int, default=1920)
     parser.add_argument('--height', type=int, default=1080)
+    parser.add_argument('--workspace-setup', type=Path, help='Workspace install/setup.bash for an unsourced desktop session')
     return parser
 
 
@@ -32,6 +33,15 @@ def main(args=None):
     if not options.demo and os.path.realpath(sys.executable) != os.path.realpath('/usr/bin/python3'):
         print('ROS mode requires /usr/bin/python3 (Ubuntu 22.04 / ROS 2 Humble).', file=sys.stderr)
         return 2
+    if not options.demo and os.environ.get('TELEOP_DASHBOARD_ENV_READY') != '1':
+        from .process_environment import load_environment
+        try:
+            environment = load_environment(options.workspace_setup)
+            os.execve('/usr/bin/python3', ['/usr/bin/python3', '-m', 'rm65_teleop_dashboard.app',
+                                          *raw, *ros_args], environment)
+        except Exception as exc:
+            print(f'ROS environment unavailable: {exc}. Set TELEOP_WORKSPACE_SETUP or --workspace-setup.', file=sys.stderr)
+            return 2
     try:
         import PyQt5
         # Some Windows Qt 5 builds lose non-ASCII components in their compiled
@@ -49,6 +59,7 @@ def main(args=None):
     from .demo_data import demo_snapshot
     from .main_window import MainWindow
     from .models import EventLogger, SnapshotStore
+    from .runtime_service import RuntimeService
 
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     app = QApplication([sys.argv[0]])
@@ -60,7 +71,7 @@ def main(args=None):
             font_path = font_dir / font_name
             if font_path.is_file():
                 QFontDatabase.addApplicationFont(str(font_path))
-    app.setApplicationName('Dual-Arm VR Teleoperation Dashboard')
+    app.setApplicationName('Dual-Arm Teleoperation Workstation')
     window = MainWindow()
     window.resize(options.width, options.height)
     window.set_page(options.page)
@@ -76,6 +87,16 @@ def main(args=None):
             print(f'Cannot start ROS monitoring: {exc}. Source the Humble and workspace setup files.',
                   file=sys.stderr)
             return 2
+    if options.demo:
+        runtime = RuntimeService.demo()
+        runtime.cycle()
+    else:
+        from .runtime_observer import inspect_graph
+        runtime = RuntimeService(lambda: inspect_graph(monitor.node), store.snapshot, os.environ)
+        runtime.start()
+    runtime_page = window.pages['runtime-control']
+    runtime_page.start_requested.connect(runtime.request_start)
+    runtime_page.stop_requested.connect(runtime.request_stop)
     started = time.monotonic()
     events = EventLogger()
     exit_code = [0]
@@ -83,7 +104,11 @@ def main(args=None):
     def refresh():
         snapshot = (demo_snapshot(time.monotonic() - started, domain_id=domain)
                     if options.demo else store.snapshot())
-        window.update_snapshot(replace(snapshot, events=events.update(snapshot)))
+        process_snapshot = runtime.snapshot()
+        merged_events = tuple(sorted((*events.update(snapshot), *process_snapshot.events),
+                                     key=lambda event: event.time_s)[-500:])
+        window.update_snapshot(replace(snapshot, events=merged_events))
+        window.update_runtime(process_snapshot)
 
     def capture():
         try:
@@ -111,10 +136,15 @@ def main(args=None):
         result = app.exec_()
     finally:
         timer.stop()
-        if monitor is not None:
-            monitor.stop()
-        for signum, handler in previous_signals.items():
-            signal.signal(signum, handler)
+        try:
+            runtime.close()
+        finally:
+            try:
+                if monitor is not None:
+                    monitor.stop()
+            finally:
+                for signum, handler in previous_signals.items():
+                    signal.signal(signum, handler)
     return exit_code[0] or result
 
 

@@ -62,6 +62,19 @@ def stylesheet(compact=False):
     QScrollBar::handle:horizontal { background: #C7C7CC; min-width: 28px; border-radius: 3px; }
     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
     QToolTip { color: #1D1D1F; background: white; border: 1px solid #E5E5EA; padding: 6px; }
+    QDialog { background: #F5F5F7; }
+    QPushButton { background: #F2F2F7; color: #1D1D1F; border: 1px solid #E5E5EA; border-radius: 9px; padding: 0 16px; }
+    QPushButton:hover { background: #E8E8ED; }
+    QPushButton[role="primaryAction"] { background: #007AFF; border: 1px solid #007AFF; color: white; }
+    QPushButton[role="primaryAction"]:hover { background: #0069D9; }
+    QPushButton[role="destructiveAction"] { background: #FFF8F7; border: 1px solid #F4C9C5; color: #D6372D; }
+    QPushButton:disabled { background: #F2F2F7; color: #A3A3AA; border: 1px solid #EBEBF0; }
+    QPushButton[role="primaryAction"]:disabled { background: #B7D5FA; color: white; border: 1px solid #B7D5FA; }
+    QPushButton[role="destructiveAction"]:disabled { background: #FFF8F7; color: #D7A39F; border: 1px solid #F4DEDC; }
+    QComboBox { background: #F2F2F7; border: 1px solid #E5E5EA; border-radius: 8px; padding: 7px 12px; }
+    QComboBox QAbstractItemView { background: white; selection-background-color: #DDEAFB; }
+    QCheckBox { spacing: 10px; padding: 5px 0; }
+    QPlainTextEdit { background: white; border: 1px solid #E5E5EA; border-radius: 10px; padding: 10px; }
     ''' % (family, 26 if compact else 28)
 
 

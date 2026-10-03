@@ -8,16 +8,18 @@ from .pages import create_pages
 from .styles import stylesheet
 from .view_config import PAGES, PAGE_KEYS
 from .widgets import StatusDot, label
+from .runtime_service import RuntimeSnapshot
 
 
 class MainWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle('双臂机器人遥操作监控系统 · Dual-Arm VR Teleoperation Dashboard')
+        self.setWindowTitle('双臂机器人遥操作监控与运行管理系统 V1.0')
         self.setMinimumSize(1280, 720)
         self.resize(1920, 1080)
         self._compact = False
         self._snapshot = SystemSnapshot()
+        self._runtime = RuntimeSnapshot()
         self.setStyleSheet(stylesheet())
         root = QWidget()
         root.setObjectName('DashboardRoot')
@@ -41,6 +43,7 @@ class MainWindow(QMainWindow):
         self.navigation.currentRowChanged.connect(self._navigate)
         self.set_page('overview')
         self.update_snapshot(self._snapshot)
+        self.update_runtime(self._runtime)
 
     def _toolbar(self):
         toolbar = QFrame()
@@ -55,11 +58,12 @@ class MainWindow(QMainWindow):
         self.domain_label = label('', 'secondary')
         self.mode_label = label('', 'secondary')
         self.system_label = StatusDot()
+        self.ros_label = StatusDot(text='ROS 2')
         self.demo_badge = label('DEMO DATA', 'demo')
         self.readonly_label = label('READ ONLY', 'caption')
         self.readonly_label.setToolTip('只订阅和显示数据；控制与安全由现有系统负责。')
         self.clock = label('', 'secondary')
-        for widget in (self.domain_label, self.mode_label, self.system_label,
+        for widget in (self.mode_label, self.domain_label, self.ros_label, self.system_label,
                        self.demo_badge, self.readonly_label, self.clock):
             row.addWidget(widget, 0, Qt.AlignVCenter)
         return toolbar
@@ -78,6 +82,19 @@ class MainWindow(QMainWindow):
             return
         self.stack.setCurrentIndex(index)
         self.page_title.setText(PAGES[index][1])
+        self._mode_text()
+
+    def _mode_text(self):
+        managed = self.current_page == 'runtime-control' and self._runtime.enabled
+        self.readonly_label.setText('CONTROL MODE' if managed else 'READ ONLY')
+        self.readonly_label.setToolTip('运行控制页只管理进程；ROS 监测层仍为只读。硬件急停：外部设备。')
+
+    def update_runtime(self, snapshot):
+        self._runtime = snapshot
+        self._mode_text()
+        for page in self.pages.values():
+            if hasattr(page, 'update_runtime'):
+                page.update_runtime(snapshot)
 
     def update_snapshot(self, snapshot):
         """Called only by the existing 10 Hz Qt timer."""
@@ -91,6 +108,7 @@ class MainWindow(QMainWindow):
         text = {'SYSTEM READY': '系统正常', 'DEGRADED': '需要注意',
                 'FAULT': '存在故障', 'OFFLINE': '系统离线'}[system]
         self.system_label.set_state(system, text)
+        self.ros_label.set_state('ONLINE' if snapshot.node_count else 'OFFLINE', 'ROS 2')
         self.demo_badge.setVisible(snapshot.demo)
         self.clock.setText(datetime.now().strftime('%H:%M'))
         for page in self.pages.values():

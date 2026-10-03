@@ -88,11 +88,18 @@ class SafetyPage(Page):
         for section in self.sections.values():
             row.addWidget(section, 1)
         self.body.addLayout(row)
+        self.process_health = label('', 'secondary')
+        self.body.addWidget(self.process_health)
         self.monitor_error = label('', 'alert')
         self.monitor_error.setWordWrap(True)
         self.body.addWidget(self.monitor_error)
         self.body.addWidget(label('监控显示不参与控制判定。硬件急停与机器人安全逻辑由外部系统负责。', 'caption'))
         self.body.addStretch(1)
+
+    def update_runtime(self, snapshot):
+        self.process_health.setText(f'Process Health · 启动组 {snapshot.system.state.title()}'
+                                   f' · 右灵巧手 {snapshot.hand.state.title()}'
+                                   '\n进程状态与上方适配器安全状态分别显示。')
 
     def update_snapshot(self, snapshot):
         for side, section in self.sections.items():

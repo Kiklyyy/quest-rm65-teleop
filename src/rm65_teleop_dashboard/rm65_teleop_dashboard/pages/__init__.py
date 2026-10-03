@@ -5,8 +5,10 @@ from .controllers_page import ControllersPage
 from .safety_page import SafetyPage
 from .linkerhand_page import LinkerHandPage
 from .events_page import EventsPage
+from .runtime_page import RuntimePage
 
 
 def create_pages():
-    return dict(overview=OverviewPage(), arms=ArmsPage(), controllers=ControllersPage(),
-                safety=SafetyPage(), linkerhand=LinkerHandPage(), events=EventsPage())
+    return {'overview': OverviewPage(), 'runtime-control': RuntimePage(), 'arms': ArmsPage(),
+            'controllers': ControllersPage(), 'safety': SafetyPage(),
+            'linkerhand': LinkerHandPage(), 'events': EventsPage()}

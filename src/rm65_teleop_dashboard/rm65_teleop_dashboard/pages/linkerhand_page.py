@@ -13,6 +13,8 @@ class LinkerHandPage(Page):
         self.state_label = StatusDot()
         self.header.addWidget(self.state_label)
         card = Card('LinkerHand L7')
+        self.process_state = label('Process State · Stopped', 'secondary')
+        card.body.addWidget(self.process_state)
         self.age = label('', 'secondary')
         card.heading.addWidget(self.age)
         self.summary_values = {}
@@ -64,6 +66,11 @@ class LinkerHandPage(Page):
         self.body.addWidget(card)
         self.body.addWidget(label('Left end-effector integration is not configured.', 'caption'))
         self.body.addStretch(1)
+
+    def update_runtime(self, snapshot):
+        external = any(c.key == 'hand' and c.ownership == 'External' for c in snapshot.components)
+        self.process_state.setText('Process State · External' if external else
+            f'Process State · {snapshot.hand.state.title()} · 独立可选模块')
 
     def update_snapshot(self, snapshot):
         hand = snapshot.linkerhand

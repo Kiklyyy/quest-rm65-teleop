@@ -17,6 +17,13 @@ def navigation_icon(key, color='#77777E'):
     if key == 'overview':
         for x, y in ((4, 4), (14, 4), (4, 14), (14, 14)):
             painter.drawRoundedRect(QRectF(x, y, 6, 6), 1.5, 1.5)
+    elif key == 'runtime-control':
+        painter.drawEllipse(QRectF(3, 3, 18, 18))
+        path = QPainterPath(QPointF(10, 7))
+        path.lineTo(17, 12)
+        path.lineTo(10, 17)
+        path.closeSubpath()
+        painter.drawPath(path)
     elif key == 'arms':
         painter.drawLine(QPointF(6, 20), QPointF(18, 20))
         points = (QPointF(12, 19), QPointF(6, 13), QPointF(11, 6), QPointF(18, 9))
@@ -85,7 +92,7 @@ class Sidebar(QFrame):
         brand.addWidget(label('双臂遥操作', 'brand'))
         brand.addStretch()
         layout.addLayout(brand)
-        layout.addWidget(label('Monitoring Console', 'secondary'))
+        layout.addWidget(label('Teleoperation Workstation', 'secondary'))
         layout.addSpacing(34)
         self.navigation = QListWidget()
         self.navigation.setObjectName('Navigation')
@@ -98,7 +105,7 @@ class Sidebar(QFrame):
         self.navigation.currentRowChanged.connect(self._selection)
         layout.addWidget(self.navigation)
         layout.addWidget(label('Dual RM65 · ROS 2', 'caption'))
-        layout.addWidget(label('只读监控工作站', 'caption'))
+        layout.addWidget(label('监控与运行管理 · V1.0', 'caption'))
 
     def _selection(self, index):
         for row, (key, _) in enumerate(PAGES):

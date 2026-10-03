@@ -59,6 +59,13 @@ jobs:
           /usr/bin/python3 -m pytest -p no:cacheprovider src/rm65_teleop_dashboard/test -q \
             --junitxml=dashboard-tests.xml
           /usr/bin/python3 tools/dashboard_ros_probe.py
+      - name: Managed Dry Run lifecycle (no hardware packages or SDK)
+        shell: bash
+        run: |
+          source /opt/ros/humble/setup.bash
+          source install/interfaces/setup.bash
+          source install/setup.bash
+          /usr/bin/python3 tools/dashboard_runtime_probe.py
       - name: Existing workspace regression
         shell: bash
         run: |
@@ -71,24 +78,30 @@ jobs:
             --return-code-on-test-failure --event-handlers console_direct+ \
             --ctest-args -E '^test_right_linkerhand_transport$'
           /usr/bin/colcon test-result --verbose
-      - name: Render six light pages and exercise offline ROS entry point
+      - name: Render seven workstation pages and exercise offline ROS entry point
         if: always()
         shell: bash
         run: |
           source /opt/ros/humble/setup.bash
           source install/interfaces/setup.bash
           source install/setup.bash
-          mkdir -p captures/apple-style
-          for page in overview arms controllers safety linkerhand events; do
+          mkdir -p captures/runtime-management
+          for page in overview runtime-control arms controllers safety linkerhand events; do
             /usr/bin/python3 -m rm65_teleop_dashboard.app --demo \
-              --page "$page" --screenshot "captures/apple-style/${page}-1920x1080.png"
+              --page "$page" --screenshot "captures/runtime-management/${page}-1920x1080.png"
           done
           /usr/bin/python3 -m rm65_teleop_dashboard.app --demo --page overview \
-            --width 1366 --height 768 --screenshot captures/apple-style/overview-1366x768.png
+            --width 1366 --height 768 --screenshot captures/runtime-management/overview-1366x768.png
           # Exercise the installed ROS entry point without any robot/Quest
           # sources: it must render OFFLINE and shut down its executor cleanly.
           ros2 run rm65_teleop_dashboard teleop_dashboard \
             --screenshot captures/dashboard-ros-offline.png
+          # A desktop process without a sourced ROS shell must bootstrap explicitly.
+          env -i PATH=/usr/bin:/bin HOME="$HOME" ROS_DOMAIN_ID=143 ROS_LOCALHOST_ONLY=1 \
+            QT_QPA_PLATFORM=offscreen PYTHONPATH="$PWD/src/rm65_teleop_dashboard" \
+            /usr/bin/python3 -m rm65_teleop_dashboard.app \
+            --workspace-setup "$PWD/install/setup.bash" --page runtime-control \
+            --screenshot captures/dashboard-unsourced-desktop.png
       - name: Preserve verification outputs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -41,14 +41,15 @@ def test_demo_monitor_opens_updates_and_closes(application):
     window.show()
     application.processEvents()
     assert window.isVisible()
-    assert "双臂机器人遥操作监控系统" in window.windowTitle()
+    assert "双臂机器人遥操作监控与运行管理系统" in window.windowTitle()
     assert window.demo_badge.isVisible()
     arms = window.pages['arms'].arms
     assert arms['left'].state_label.text() == "ACTIVE"
     assert arms['right'].state_label.text() == "ARMED"
     assert len(arms['left'].joint_rows) == 6
     assert len(arms['right'].joint_rows) == 6
-    assert not window.findChildren(QPushButton)
+    assert all(not page.findChildren(QPushButton) for key, page in window.pages.items()
+               if key != 'runtime-control')
     window.close()
     application.processEvents()
     assert not window.isVisible()
