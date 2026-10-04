@@ -2,7 +2,7 @@
 import math
 from PyQt5.QtCore import Qt, QPointF, QRectF, pyqtSignal
 from PyQt5.QtGui import QColor, QPainter, QPainterPath, QPen
-from PyQt5.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar,
+from PyQt5.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar,
                             QScrollArea, QSizePolicy, QToolButton, QVBoxLayout, QWidget)
 from .models import status_tone
 from .styles import COLORS, apply_tone
@@ -104,8 +104,8 @@ class Card(QFrame):
         super().__init__(parent)
         self.setProperty('role', 'card')
         self.body = QVBoxLayout(self)
-        self.body.setContentsMargins(26, 24, 26, 24)
-        self.body.setSpacing(18)
+        self.body.setContentsMargins(20, 20, 20, 20)
+        self.body.setSpacing(16)
         self.heading = QHBoxLayout()
         self.heading.setSpacing(12)
         if title:
@@ -113,6 +113,62 @@ class Card(QFrame):
         self.heading.addStretch()
         if title:
             self.body.addLayout(self.heading)
+
+    def set_compact(self, compact):
+        padding = 18 if compact else 20
+        self.body.setContentsMargins(padding, padding, padding, padding)
+        self.body.setSpacing(12 if compact else 16)
+
+
+class PrimaryPanel(Card):
+    def __init__(self, title='', parent=None):
+        super().__init__(title, parent)
+        self.setProperty('role', 'primaryPanel')
+        self.set_compact(False)
+
+    def set_compact(self, compact):
+        padding = 18 if compact else 24
+        self.body.setContentsMargins(padding, padding, padding, padding)
+        self.body.setSpacing(12 if compact else 16)
+
+
+class StyledComboBox(QComboBox):
+    """Draw a local vector chevron, independent of platform glyph support."""
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(QColor('#6E6E73'), 1.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        x, y = self.width() - 17, self.height() / 2
+        painter.drawLine(QPointF(x - 4, y - 2), QPointF(x, y + 2))
+        painter.drawLine(QPointF(x, y + 2), QPointF(x + 4, y - 2))
+
+
+class MetricTile(Card):
+    def __init__(self, title, unit='', caption='', parent=None):
+        super().__init__(parent=parent)
+        self.setProperty('role', 'metricTile')
+        self.body.addWidget(label(title, 'secondary'))
+        row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(7)
+        self.value = label('—', 'metric')
+        self.unit = label(unit, 'metricUnit')
+        row.addWidget(self.value, 0, Qt.AlignBaseline)
+        row.addWidget(self.unit, 0, Qt.AlignBaseline)
+        row.addStretch()
+        self.body.addLayout(row)
+        self.body.addWidget(label(caption, 'caption'))
+        self.set_compact(False)
+
+    def set_compact(self, compact):
+        padding = 14 if compact else 18
+        self.body.setContentsMargins(padding, padding, padding, padding)
+        self.body.setSpacing(4 if compact else 7)
+        self.setMinimumHeight(106 if compact else 130)
+
+    def setText(self, text):
+        self.value.setText(text)
 
 
 class Page(QScrollArea):
@@ -124,12 +180,12 @@ class Page(QScrollArea):
         self.setFrameShape(QFrame.NoFrame)
         wrapper = QWidget()
         self.outer = QHBoxLayout(wrapper)
-        self.outer.setContentsMargins(36, 32, 36, 32)
+        self.outer.setContentsMargins(32, 28, 32, 28)
         self.content = QWidget()
-        self.content.setMaximumWidth(1420)
+        self.content.setMaximumWidth(1480)
         self.body = QVBoxLayout(self.content)
         self.body.setContentsMargins(0, 0, 0, 0)
-        self.body.setSpacing(22)
+        self.body.setSpacing(24)
         self.body.setAlignment(Qt.AlignTop)
         self.outer.addStretch(1)
         self.outer.addWidget(self.content, 100)
@@ -140,17 +196,19 @@ class Page(QScrollArea):
         titles.setSpacing(6)
         titles.addWidget(label(title, 'pageTitle'))
         if subtitle:
-            titles.addWidget(label(subtitle, 'secondary'))
+            titles.addWidget(label(subtitle, 'subtitle'))
         self.header.addLayout(titles)
         self.header.addStretch()
         self.body.addLayout(self.header)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.compact = self.viewport().width() < 1200 or self.viewport().height() < 800
-        self.outer.setContentsMargins(24 if self.compact else 36, 24 if self.compact else 32,
-                                     24 if self.compact else 36, 24)
-        self.body.setSpacing(18 if self.compact else 22)
+        self.compact = self.window().width() < 1600
+        self.outer.setContentsMargins(20 if self.compact else 32, 18 if self.compact else 28,
+                                     20 if self.compact else 32, 18 if self.compact else 28)
+        self.body.setSpacing(12 if self.compact else 24)
+        for card in self.findChildren(Card):
+            card.set_compact(self.compact)
 
 
 class ValueTriple(QWidget):
@@ -193,6 +251,7 @@ class SegmentControl(QFrame):
             row.addWidget(button)
             self.buttons[key] = button
         self.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.setFixedHeight(36)
         self.select(next(iter(self.buttons)), emit=False)
 
     def select(self, key, emit=True):
@@ -242,14 +301,16 @@ class SettingsList(QWidget):
     def add(self, key, title, status=False):
         if self.fields:
             self.body.addWidget(divider())
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 10, 0, 10)
+        container = QWidget()
+        container.setMinimumHeight(42)
+        row = QHBoxLayout(container)
+        row.setContentsMargins(0, 8, 0, 8)
         row.setSpacing(14)
         row.addWidget(label(title, 'secondary'))
         row.addStretch()
         widget = StatusDot() if status else label('—')
         row.addWidget(widget)
-        self.body.addLayout(row)
+        self.body.addWidget(container)
         self.fields[key] = widget
         return widget
 
@@ -259,6 +320,65 @@ class SettingsList(QWidget):
             widget.set_state(state or text, text)
         else:
             widget.setText(str(text))
+
+    def set_row_height(self, height):
+        for index in range(self.body.count()):
+            row = self.body.itemAt(index).widget()
+            if row and row.layout():
+                row.setMinimumHeight(height)
+                row.layout().setContentsMargins(0, 4, 0, 4)
+
+
+class SettingsGroup(Card):
+    """One surface with divided rows, rather than nested cards."""
+    def __init__(self, title='', parent=None):
+        super().__init__(title, parent)
+        self.setProperty('role', 'settingsGroup')
+        self.settings = SettingsList()
+        self.body.addWidget(self.settings)
+
+
+class TimelineStep(QWidget):
+    def __init__(self, title, first=False, last=False):
+        super().__init__()
+        self.first, self.last = first, last
+        self.tone = 'grey'
+        self.setFixedHeight(38)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(26, 0, 0, 0)
+        row.addWidget(label(title))
+        row.addStretch()
+        self.state_label = label('—', 'secondary')
+        row.addWidget(self.state_label)
+
+    def set_state(self, state, text=None):
+        self.tone = status_tone(state)
+        self.state_label.setText(text if text is not None else state)
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        center = self.height() / 2
+        painter.setPen(QPen(QColor('#D1D1D6'), 1))
+        painter.drawLine(QPointF(6, center if self.first else 0),
+                         QPointF(6, center if self.last else self.height()))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(COLORS[self.tone]))
+        painter.drawEllipse(QPointF(6, center), 5, 5)
+
+
+class RuntimeTimeline(QWidget):
+    def __init__(self, entries):
+        super().__init__()
+        body = QVBoxLayout(self)
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        self.steps = {}
+        for index, (key, title) in enumerate(entries):
+            step = TimelineStep(title, index == 0, index == len(entries) - 1)
+            body.addWidget(step)
+            self.steps[key] = step
 
 
 class JointBar(QWidget):
@@ -289,7 +409,7 @@ def progress():
     widget = QProgressBar()
     widget.setRange(0, 1000)
     widget.setTextVisible(False)
-    widget.setFixedHeight(4)
+    widget.setFixedHeight(5)
     return widget
 
 

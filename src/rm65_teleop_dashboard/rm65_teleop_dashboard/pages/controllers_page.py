@@ -13,7 +13,7 @@ class ButtonIndicator(QWidget):
         self.text = text
         self.pressed = False
         self.available = False
-        self.setFixedSize(40, 40)
+        self.setFixedSize(32, 32)
         self.setToolTip('Physical button input · read only')
 
     def paintEvent(self, event):
@@ -21,7 +21,7 @@ class ButtonIndicator(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor('#007AFF' if self.pressed else '#E5E5EA'))
-        painter.drawEllipse(QRectF(1, 1, 38, 38))
+        painter.drawEllipse(QRectF(0, 0, 32, 32))
         painter.setPen(QColor('white' if self.pressed else '#6E6E73'))
         painter.drawText(self.rect(), Qt.AlignCenter, self.text if self.available else '—')
 
@@ -35,6 +35,8 @@ class ControllerCard(Card):
         self.body.addWidget(label('L' if side == 'left' else 'R', 'metric'))
         self.position = ValueTriple(('X', 'Y', 'Z'), 'm')
         self.orientation = ValueTriple(('Roll', 'Pitch', 'Yaw'), '°')
+        for widget in self.position.values + self.orientation.values:
+            widget.setProperty('role', 'controllerValue')
         self.body.addWidget(self.position)
         self.body.addWidget(self.orientation)
         self.timing = label('', 'secondary')

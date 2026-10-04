@@ -37,7 +37,8 @@ Hardware 启动需要预检及人工确认；默认建议 Dry Run。六个 RM65 
 `--page overview|runtime-control|arms|controllers|safety|linkerhand|events` 可选择启动页面。
 模型、ROS 采集、解析器和 Demo 数据保持原样，进程管理是独立后台层。
 见[V3 架构、命令与验证](docs/progress/teleop-dashboard-runtime.md)及
-[运行控制截图](docs/screenshots/runtime-management/runtime-control-1920x1080.png)。
+[V4 视觉精修与前后比较](docs/progress/teleop-dashboard-v4.md)及
+[运行控制截图](docs/screenshots/v4/runtime-control-1920x1080.png)。
 
 先检查 Ubuntu 系统 Qt 包；缺少时优先使用 apt 的 `python3-pyqt5`，不要安装到 Conda：
 
@@ -49,8 +50,8 @@ source install/setup.bash
 ros2 run rm65_teleop_dashboard teleop_dashboard --demo
 ```
 
-`--demo` 不需要 ROS、Quest 或机器人连接，动态生成数据，并持续显示 **DEMO DATA**；
-进程操作全部禁用，不伪造实际 launch 成功。
+`--demo` 不需要 ROS、Quest 或机器人连接，动态生成数据，并持续显示 **Demo**；
+进程操作全部禁用，按钮仅保留正常配色作为视觉预览，不伪造实际 launch 成功。
 也可以直接从源码运行：
 
 ```bash

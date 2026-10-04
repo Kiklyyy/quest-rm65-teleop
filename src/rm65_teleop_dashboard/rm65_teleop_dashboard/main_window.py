@@ -3,7 +3,7 @@ from datetime import datetime
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QFrame, QHBoxLayout, QMainWindow, QStackedWidget, QVBoxLayout, QWidget
 from .models import SystemSnapshot, operating_mode, summarize_system
-from .navigation import Sidebar
+from .navigation import Sidebar, navigation_icon
 from .pages import create_pages
 from .styles import stylesheet
 from .view_config import PAGES, PAGE_KEYS
@@ -36,6 +36,7 @@ class MainWindow(QMainWindow):
         workspace.addWidget(self.sidebar)
         self.stack = QStackedWidget()
         self.pages = create_pages()
+        self.pages['overview'].navigate_requested.connect(self.set_page)
         for page in self.pages.values():
             self.stack.addWidget(page)
         workspace.addWidget(self.stack, 1)
@@ -48,10 +49,10 @@ class MainWindow(QMainWindow):
     def _toolbar(self):
         toolbar = QFrame()
         toolbar.setObjectName('Toolbar')
-        toolbar.setFixedHeight(62)
+        toolbar.setFixedHeight(56)
         row = QHBoxLayout(toolbar)
         row.setContentsMargins(26, 0, 26, 0)
-        row.setSpacing(22)
+        row.setSpacing(20)
         self.page_title = label('总览', 'toolbarTitle')
         row.addWidget(self.page_title)
         row.addStretch()
@@ -59,12 +60,20 @@ class MainWindow(QMainWindow):
         self.mode_label = label('', 'secondary')
         self.system_label = StatusDot()
         self.ros_label = StatusDot(text='ROS 2')
-        self.demo_badge = label('DEMO DATA', 'demo')
+        self.demo_badge = label('Demo', 'demo')
         self.readonly_label = label('READ ONLY', 'caption')
         self.readonly_label.setToolTip('只订阅和显示数据；控制与安全由现有系统负责。')
         self.clock = label('', 'secondary')
+        readonly = QWidget()
+        readonly_row = QHBoxLayout(readonly)
+        readonly_row.setContentsMargins(0, 0, 0, 0)
+        readonly_row.setSpacing(5)
+        self.lock_icon = label()
+        self.lock_icon.setPixmap(navigation_icon('lock', '#8E8E93').pixmap(13, 13))
+        readonly_row.addWidget(self.lock_icon)
+        readonly_row.addWidget(self.readonly_label)
         for widget in (self.mode_label, self.domain_label, self.ros_label, self.system_label,
-                       self.demo_badge, self.readonly_label, self.clock):
+                       self.demo_badge, readonly, self.clock):
             row.addWidget(widget, 0, Qt.AlignVCenter)
         return toolbar
 
@@ -87,6 +96,7 @@ class MainWindow(QMainWindow):
     def _mode_text(self):
         managed = self.current_page == 'runtime-control' and self._runtime.enabled
         self.readonly_label.setText('CONTROL MODE' if managed else 'READ ONLY')
+        self.lock_icon.setVisible(not managed)
         self.readonly_label.setToolTip('运行控制页只管理进程；ROS 监测层仍为只读。硬件急停：外部设备。')
 
     def update_runtime(self, snapshot):
@@ -116,7 +126,9 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        compact = self.width() < 1500
+        compact = self.width() < 1600
+        if hasattr(self, 'sidebar'):
+            self.sidebar.setFixedWidth(196 if compact else 224)
         if compact != self._compact:
             self._compact = compact
             self.setStyleSheet(stylesheet(compact))

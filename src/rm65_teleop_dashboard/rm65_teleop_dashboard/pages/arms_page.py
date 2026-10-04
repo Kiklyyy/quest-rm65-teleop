@@ -44,7 +44,7 @@ class ArmPanel(QWidget):
         self.joint_rows = []
         for index in range(6):
             grid.addWidget(label(f'J{index + 1}', 'secondary'), index, 0)
-            value = label('—')
+            value = label('—', 'jointValue')
             value.setMinimumWidth(62)
             grid.addWidget(value, index, 1)
             bar = JointBar()

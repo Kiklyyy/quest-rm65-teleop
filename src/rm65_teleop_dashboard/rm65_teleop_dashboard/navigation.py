@@ -12,9 +12,24 @@ def navigation_icon(key, color='#77777E'):
     painter = QPainter(image)
     painter.setRenderHint(QPainter.Antialiasing)
     painter.scale(2, 2)
-    painter.setPen(QPen(QColor(color), 1.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+    painter.setPen(QPen(QColor(color), 1.7, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
     painter.setBrush(Qt.NoBrush)
-    if key == 'overview':
+    if key == 'play':
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(color))
+        path = QPainterPath(QPointF(7, 4))
+        path.lineTo(20, 12)
+        path.lineTo(7, 20)
+        path.closeSubpath()
+        painter.drawPath(path)
+    elif key == 'stop':
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(color))
+        painter.drawRoundedRect(QRectF(5, 5, 14, 14), 2, 2)
+    elif key == 'check':
+        painter.drawLine(QPointF(5, 12), QPointF(10, 17))
+        painter.drawLine(QPointF(10, 17), QPointF(19, 7))
+    elif key == 'overview':
         for x, y in ((4, 4), (14, 4), (4, 14), (14, 14)):
             painter.drawRoundedRect(QRectF(x, y, 6, 6), 1.5, 1.5)
     elif key == 'runtime-control':
@@ -29,7 +44,7 @@ def navigation_icon(key, color='#77777E'):
         points = (QPointF(12, 19), QPointF(6, 13), QPointF(11, 6), QPointF(18, 9))
         for first, second in zip(points, points[1:]):
             painter.drawLine(first, second)
-        painter.setBrush(QColor('#F0F0F3'))
+        painter.setBrush(QColor('#F2F2F5'))
         for point in points[:-1]:
             painter.drawEllipse(point, 2, 2)
         painter.drawLine(QPointF(18, 9), QPointF(21, 5))
@@ -69,34 +84,44 @@ def navigation_icon(key, color='#77777E'):
         path.quadTo(2, 12, 4, 12)
         path.lineTo(8, 15)
         painter.drawPath(path)
+    elif key == 'lock':
+        painter.drawRoundedRect(QRectF(5, 10, 14, 11), 2, 2)
+        painter.drawArc(QRectF(8, 3, 8, 13), 0, 180 * 16)
     else:
         for y in (6, 12, 18):
             painter.drawEllipse(QPointF(5, y), .6, .6)
             painter.drawLine(QPointF(10, y), QPointF(20, y))
     painter.end()
-    return QIcon(image)
+    icon = QIcon(image)
+    icon.addPixmap(image, QIcon.Disabled)
+    return icon
 
 
 class Sidebar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName('Sidebar')
-        self.setFixedWidth(230)
+        self.setFixedWidth(224)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 28, 18, 22)
+        layout.setContentsMargins(12, 24, 12, 22)
         layout.setSpacing(8)
         brand = QHBoxLayout()
         mark = label()
-        mark.setPixmap(navigation_icon('arms', '#55555B').pixmap(32, 32))
+        mark.setPixmap(navigation_icon('arms', '#55555B').pixmap(28, 28))
+        mark.setFixedWidth(28)
+        brand.setSpacing(10)
         brand.addWidget(mark)
-        brand.addWidget(label('双臂遥操作', 'brand'))
+        names = QVBoxLayout()
+        names.setSpacing(5)
+        names.addWidget(label('双臂遥操作', 'brand'))
+        names.addWidget(label('Monitoring Console', 'caption'))
+        brand.addLayout(names)
         brand.addStretch()
         layout.addLayout(brand)
-        layout.addWidget(label('Teleoperation Workstation', 'secondary'))
-        layout.addSpacing(34)
+        layout.addSpacing(36)
         self.navigation = QListWidget()
         self.navigation.setObjectName('Navigation')
-        self.navigation.setIconSize(QSize(20, 20))
+        self.navigation.setIconSize(QSize(18, 18))
         self.navigation.setSpacing(0)
         for key, title in PAGES:
             item = QListWidgetItem(navigation_icon(key), title)
@@ -104,8 +129,8 @@ class Sidebar(QFrame):
             self.navigation.addItem(item)
         self.navigation.currentRowChanged.connect(self._selection)
         layout.addWidget(self.navigation)
-        layout.addWidget(label('Dual RM65 · ROS 2', 'caption'))
-        layout.addWidget(label('监控与运行管理 · V1.0', 'caption'))
+        layout.addWidget(label('ROS 2 Humble', 'caption'))
+        layout.addWidget(label('Dual RM65', 'caption'))
 
     def _selection(self, index):
         for row, (key, _) in enumerate(PAGES):
