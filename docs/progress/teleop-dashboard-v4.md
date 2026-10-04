@@ -58,7 +58,12 @@ Round 2（七页 1920 + 总览/运行控制 1366，逐张复核）：
 Windows 本地完整 Dashboard：**137 passed、4 个预期 ROS/POSIX skip、4 subtests passed**。
 原 117 项 Ubuntu 测试对应的用例全部保留，新增 Demo no-op、组件构造、十四个双分辨率截图/
 surface 不重叠检查，以及七个新增行为文件冻结检查。原 1280×720 导航与无滚动测试通过。
-Ubuntu 五包构建、回归、ROS 接收与生命周期验证由 PR CI 继续执行，实际结果以 CI 链接为准。
+Ubuntu 22.04 / Humble / 系统 Python 3.10：**141 passed**；五包构建和 Dashboard 单包构建成功，
+五包回归 **409 tests、0 errors、0 failures、0 skipped**。
+[验证代码提交 bd53793 的 CI](https://github.com/Kiklyyy/quest-rm65-teleop/actions/runs/37219080084)
+同时验证 13 路真实 ROS subscription 接收、0 输出端点、malformed/stale 处理、线程干净退出、
+双臂软件 Dry Run 生命周期和未 source shell 的桌面入口。Ubuntu 九张截图保存在该 CI artifact，
+已复核 Noto CJK 字体布局，小屏原断言通过。
 既有现场未版本化 LinkerHand SDK transport 测试组仍按 V3 CI 边界排除，不连接 SDK。
 
 ## V3 → V4 对比
