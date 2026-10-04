@@ -75,6 +75,10 @@ Dashboard 从已安装节点源码读取默认 SDK 路径，不复制现场绝�
 
 - 确认环境/包可用、ROS_DOMAIN_ID 是 0–232、graph 和本机进程可检查。
 - 检查重复 driver/control/adapter、端口 10000、已运行控制栈；拒绝重复整栈启动。
+- 端口观察仅读取 `/proc/net/tcp{,6}`，不周期性 bind/connect。读取失败保守阻塞；
+  TIME_WAIT 也视为占用，因此有连接的现场停止后可能需稍等再启动。
+  尚未 listen 的绑定可能不在该表中；端口无记录不保证 bind 成功，原 dual launch
+  的启动前端口检查仍负责最终判断，READY 仍必须有实际 TCP listener。
 - Hardware 还检查已安装 driver/control dual launch、无已有手连接。
 - Quest 输入未到达为 warning：TCP 通常尚未启动；启动后必须收到原始输入才就绪。
   bridge 一直发布 target，因此 target 存在或 50 Hz 不能替代 Quest freshness。
@@ -134,6 +138,14 @@ Ubuntu PR 验证：[run 37128755438](https://github.com/Kiklyyy/quest-rm65-teleo
 
 静态审计确认 ROS 层仍只有 13 路订阅，新增 process 层没有机器人 ROS 输出端点。
 整个开发与验证过程没有启动真实硬件。硬件模式的命令与确认门禁已测试，现场硬件运行未验证。
+
+2026-10-04 复验补充：文档提交 `d6b03b3` 的两次 CI 暴露 smoke 检查顺序问题：
+两个 Adapter status 先到时，TCP Endpoint 还未监听，脚本过早断言失败。
+生产 READY 原本已有 listener 条件；现将 smoke 同时等待全部软件节点、有效 dry_run
+状态与 TCP 监听（不要求真实 Quest 输入），超时附 graph 和进程日志。
+新增时序回归覆盖 Adapter → nodes → TCP 的到达顺序；另外移除 observer 周期性试绑定，
+新增 IPv4/IPv6、本地/远端端口、TIME_WAIT、读取失败与无 socket 调用的回归检查。
+本次 CI 失败没有证据可归因于试绑定；后者是只读观察边界的独立修正。
 
 七页 1920×1080，以及总览/运行控制 1366×768 已生成并逐张检查。
 1920 运行页全部内容可见；1366 运行页使用明确的纵向滚动，未出现水平溢出或重叠。

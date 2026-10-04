@@ -1,7 +1,6 @@
 """Read-only graph evidence and pure component readiness; no ROS endpoints."""
 from dataclasses import dataclass
 from pathlib import Path
-import socket
 from typing import Tuple
 
 
@@ -95,6 +94,31 @@ def component_states(graph, snapshot, mode, owned=False, hand_owned=False, hand_
     return tuple(result)
 
 
+def tcp_port_state():
+    """Read local socket evidence without temporarily occupying the server port.
+
+    No observed entry is not a guarantee of a future bind: the existing launch
+    performs that check. TIME_WAIT is conservatively treated as occupied.
+    """
+    occupied, listening = False, False
+    for filename in ('/proc/net/tcp', '/proc/net/tcp6'):
+        try:
+            for row in Path(filename).read_text().splitlines()[1:]:
+                fields = row.split()
+                if len(fields) < 4:
+                    return False, False
+                if fields[1].upper().endswith(':2710'):
+                    occupied = True
+                    listening |= fields[3] == '0A'
+        except FileNotFoundError:
+            if filename.endswith('tcp6'):
+                continue  # IPv6 may be disabled on the host.
+            return False, False
+        except OSError:
+            return False, False
+    return not occupied, listening
+
+
 def inspect_graph(node):
     try:
         nodes = tuple(f'{namespace.rstrip("/")}/{name}' for name, namespace in node.get_node_names_and_namespaces())
@@ -114,20 +138,5 @@ def inspect_graph(node):
                     'rm65_teleop_adapter_node', 'right_linkerhand_node'}))
             except (OSError, ValueError):
                 continue
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            listener.bind(('0.0.0.0', 10000))
-            free = True
-        except OSError:
-            free = False
-    # Read listener state without connecting to the Quest endpoint or sending bytes.
-    listening = False
-    if scan_ok:
-        for filename in ('/proc/net/tcp', '/proc/net/tcp6'):
-            try:
-                listening |= any(row.split()[1].endswith(':2710') and row.split()[3] == '0A'
-                                 for row in Path(filename).read_text().splitlines()[1:])
-            except (OSError, IndexError):
-                pass
+    free, listening = tcp_port_state()
     return GraphEvidence(nodes, listening, graph_ok, tuple(processes), scan_ok, free, error)

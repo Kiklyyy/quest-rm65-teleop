@@ -1,4 +1,5 @@
 from dataclasses import replace
+import pytest
 from rm65_teleop_dashboard.demo_data import demo_snapshot
 from rm65_teleop_dashboard.models import SystemSnapshot, StreamHealth
 from rm65_teleop_dashboard.runtime_observer import GraphEvidence, component_states, component_dependencies
@@ -74,3 +75,60 @@ def test_legacy_hand_status_with_unknown_mode_is_not_ready():
     graph = GraphEvidence(nodes=('/right_linkerhand',))
     hand = replace(data.linkerhand, dry_run=None, communication_ok=None, fault_codes=None)
     assert component_states(graph, replace(data, linkerhand=hand), 'hardware')[-1].state != 'READY'
+
+
+def test_graph_observation_never_binds_the_endpoint_port(monkeypatch):
+    from pathlib import Path
+    import socket
+    from rm65_teleop_dashboard.runtime_observer import inspect_graph
+
+    class Node:
+        def get_node_names_and_namespaces(self):
+            return []
+
+    def forbidden_socket(*args, **kwargs):
+        raise AssertionError('Observation must not race the real endpoint bind')
+
+    monkeypatch.setattr(socket, 'socket', forbidden_socket)
+    monkeypatch.setattr(Path, 'is_dir', lambda _: True)
+    monkeypatch.setattr(Path, 'iterdir', lambda _: iter(()))
+    monkeypatch.setattr(Path, 'read_text', lambda _: 'sl local_address rem_address st\n')
+    graph = inspect_graph(Node())
+    assert graph.tcp_port_free
+    assert not graph.tcp_listening
+
+
+@pytest.mark.parametrize('ipv4,ipv6,expected', [
+    ('', '', (True, False)),
+    ('0: 00000000:2710 00000000:0000 0A', '', (False, True)),
+    ('', '0: 00000000000000000000000000000000:2710 00000000:0000 0A', (False, True)),
+    ('0: 0100007F:9000 0100007F:2710 01', '', (True, False)),
+    ('0: 0100007F:2710 0100007F:9000 06', '', (False, False)),
+    ('0: 00000000:2711 00000000:0000 0A', '', (True, False)),
+    ('malformed', '', (False, False)),
+])
+def test_tcp_evidence_uses_local_port_and_distinguishes_listening(monkeypatch, ipv4, ipv6, expected):
+    from pathlib import Path
+    from rm65_teleop_dashboard.runtime_observer import tcp_port_state
+    monkeypatch.setattr(Path, 'read_text', lambda path:
+        'sl local_address rem_address st\n' + (ipv6 if str(path).endswith('tcp6') else ipv4))
+    assert tcp_port_state() == expected
+
+
+@pytest.mark.parametrize('filename,error,expected', [
+    ('tcp', FileNotFoundError, (False, False)),
+    ('tcp6', FileNotFoundError, (True, False)),
+    ('tcp', PermissionError, (False, False)),
+    ('tcp6', PermissionError, (False, False)),
+])
+def test_unreadable_tcp_evidence_blocks_except_disabled_ipv6(monkeypatch, filename, error, expected):
+    from pathlib import Path
+    from rm65_teleop_dashboard.runtime_observer import tcp_port_state
+
+    def read(path):
+        if path.name == filename:
+            raise error()
+        return 'sl local_address rem_address st\n'
+
+    monkeypatch.setattr(Path, 'read_text', read)
+    assert tcp_port_state() == expected
