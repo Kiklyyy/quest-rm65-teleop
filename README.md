@@ -16,7 +16,7 @@
 | `src/Quest2ROS2/` | Quest 输入、模拟输入、右手虚拟目标 bridge 及其单元测试 |
 | `src/quest2ros/` | `OVR2ROSInputs` 与 `OVR2ROSHapticFeedback` 自定义消息定义 |
 | `src/rm65_teleop_adapter/` | 右 RM65 Quest 6DoF 遥操作、安全状态机与 Home Action |
-| `src/rm65_teleop_dashboard/` | 双臂机器人遥操作监控系统：独立只读 Qt 桌面界面与无 ROS demo |
+| `src/rm65_teleop_dashboard/` | 双臂遥操作监控与运行管理：只读 ROS 监控、显式进程管理与无 ROS demo |
 | `src/rm65_teleop_adapter/scripts/right_linkerhand_node.py` | 独立右 L7 食指扳机节点，默认不启动 |
 | `src/ros_tcp_communication/` | Unity/Quest 到 ROS 2 的 TCP Endpoint，包含当前现场通信补丁 |
 | `docs/` | 来源追溯、接口契约和 A/B 两条开发进度线 |

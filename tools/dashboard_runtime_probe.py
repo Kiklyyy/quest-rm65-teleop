@@ -66,8 +66,10 @@ def main():
         print('Process output:', ''.join(runtime.snapshot().system_logs))
         raise
     finally:
-        runtime.close()
-        monitor.stop()
+        try:
+            runtime.close()
+        finally:
+            monitor.stop()
     print('Runtime Dry Run smoke PASSED')
 
 
