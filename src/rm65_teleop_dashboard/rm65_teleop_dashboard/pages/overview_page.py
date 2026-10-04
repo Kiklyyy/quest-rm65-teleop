@@ -1,7 +1,7 @@
 """Quiet system summary; formatting never changes telemetry semantics."""
 from datetime import datetime
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QBoxLayout, QHBoxLayout, QVBoxLayout, QWidget
 from ..models import summarize_system, operating_mode
 from ..navigation import navigation_icon
 from ..styles import apply_tone
@@ -36,6 +36,7 @@ class OverviewPage(Page):
         line = QHBoxLayout()
         line.setSpacing(28)
         self.statuses = {}
+        self.status_layouts = []
         for key, title in (('quest', 'Quest'), ('left', '左 RM65'), ('right', '右 RM65'), ('safety', '安全')):
             group = QWidget()
             column = QVBoxLayout(group)
@@ -46,6 +47,7 @@ class OverviewPage(Page):
             column.addWidget(state, 0, Qt.AlignLeft)
             line.addWidget(group, 1)
             self.statuses[key] = state
+            self.status_layouts.append(column)
         self.primary.body.addLayout(line)
         self.alert = label('', 'caption')
         self.alert.setWordWrap(True)
@@ -109,7 +111,11 @@ class OverviewPage(Page):
         super().resizeEvent(event)
         self.body.setSpacing(12 if self.compact else 24)
         self.primary.body.setSpacing(6 if self.compact else 14)
-        self.primary.setMinimumHeight(168 if self.compact else 210)
+        self.primary.setMinimumHeight(148 if self.compact else 210)
+        # A single status row preserves readable Noto CJK line heights at 720p.
+        for column in self.status_layouts:
+            column.setDirection(QBoxLayout.LeftToRight if self.compact else QBoxLayout.TopToBottom)
+            column.setSpacing(8 if self.compact else 5)
         self.primary.body.setContentsMargins(18 if self.compact else 24, 10 if self.compact else 24,
                                             18 if self.compact else 24, 10 if self.compact else 24)
         self.details.set_row_height(30 if self.compact else 42)
