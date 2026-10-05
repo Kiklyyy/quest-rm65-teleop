@@ -67,7 +67,13 @@ ROS 层仍为 13 subscriptions、0 publishers、0 services、0 service/action cl
 启动参数、SIGINT→SIGTERM→SIGKILL、外部进程保护、LinkerHand 默认关闭均未变。
 
 Windows 完整 Dashboard：**162 passed、4 个预期 ROS/POSIX skip、4 subtests passed**。
-Ubuntu CI 结果将在本轮最终验证后记录于此。
+Ubuntu 22.04 / ROS 2 Humble / 系统 Python 3.10：**166 passed**（原 141 + 新增 25）。
+五包构建及 Dashboard 单包构建成功；五包回归 **434 tests、0 errors、0 failures、0 skipped**。
+[实现提交 23d8be9 的完整 CI](https://github.com/Kiklyyy/quest-rm65-teleop/actions/runs/37289024379)
+同时通过 13 路真实 ROS 接收、零输出端点、malformed/stale、线程退出、双臂软件 Dry Run、
+进程组退出后 TCP 10000 释放、未 source 桌面入口与离线 ROS 截图验证。
+下载并逐张复核了 CI 的四张 Ubuntu/Noto CJK 截图；没有缺字、节点重叠或控件裁切，
+原 1280 总览无滚动断言通过。Ubuntu 截图和测试 XML 保存在上述 CI artifact。
 CI 保留五包构建、Dashboard 单包构建、完整回归、真实 ROS 接收探针、隔离软件 Dry Run 和未 source 入口。
 既有未版本化现场 LinkerHand SDK transport CTest 排除项不变；不安装或连接该 SDK。
 
