@@ -77,7 +77,7 @@ def test_primary_runtime_owns_actions_and_settings(application):
     assert page.primary.isAncestorOf(page.profile)
     assert page.start_button.width() > page.dry_button.width()
     assert page.start_button.height() == 44
-    assert len(page.timeline.steps) == 6
+    assert len(page.flow.nodes) == 6
     assert page.rows['driver'][1].text() == '由系统管理'
     window.close()
 

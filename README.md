@@ -33,12 +33,15 @@ Hardware 启动需要预检及人工确认；默认建议 Dry Run。六个 RM65 
 七通道明确区分；左末端设备显示未配置。后台 ROS 线程更新快照，Qt 以 10 Hz 刷新。
 
 浅色工作站界面使用侧栏导航：总览、运行控制、双臂、VR 控制器、安全、灵巧手和事件。
-总览聚焦系统状态与四项关键指标；位姿、关节和诊断信息在独立页面中查看。
+总览以双 Quest 汇合、双 RM65 分支及右灵巧手支线展示实时遥操作链路，并保留四项关键指标。
+运行控制的独立软件栈状态流展示现有组件就绪证据；位姿、关节和诊断信息在独立页面中查看。
 `--page overview|runtime-control|arms|controllers|safety|linkerhand|events` 可选择启动页面。
 模型、ROS 采集、解析器和 Demo 数据保持原样，进程管理是独立后台层。
-见[V3 架构、命令与验证](docs/progress/teleop-dashboard-runtime.md)及
-[V4 视觉精修与前后比较](docs/progress/teleop-dashboard-v4.md)及
-[运行控制截图](docs/screenshots/v4/runtime-control-1920x1080.png)。
+见[V3 架构、命令与验证](docs/progress/teleop-dashboard-runtime.md)、
+[V4 视觉精修](docs/progress/teleop-dashboard-v4.md)和
+[V5 链路视觉、状态映射与验证](docs/progress/teleop-dashboard-v5.md)。
+[总览截图](docs/screenshots/v5/overview-1920x1080.png) ·
+[运行控制截图](docs/screenshots/v5/runtime-control-1920x1080.png)。
 
 先检查 Ubuntu 系统 Qt 包；缺少时优先使用 apt 的 `python3-pyqt5`，不要安装到 Conda：
 

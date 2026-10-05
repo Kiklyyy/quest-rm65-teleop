@@ -1,12 +1,13 @@
 """Quiet system summary; formatting never changes telemetry semantics."""
 from datetime import datetime
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QBoxLayout, QHBoxLayout, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QHBoxLayout, QWidget
 from ..models import summarize_system, operating_mode
 from ..navigation import navigation_icon
+from ..flow_widget import TeleopFlowWidget
 from ..styles import apply_tone
 from ..widgets import (Card, MetricTile, Page, PrimaryPanel, SettingsGroup, StatusDot,
-                       adapter_live, combined_health, fresh_state, label, number, path_text)
+                       adapter_live, fresh_state, label, number, path_text)
 
 
 class OverviewPage(Page):
@@ -16,39 +17,18 @@ class OverviewPage(Page):
         super().__init__('系统状态', '双臂机器人与 VR 遥操作链路')
         self.primary = PrimaryPanel()
         top = QHBoxLayout()
-        text = QVBoxLayout()
-        text.setSpacing(7)
-        text.addWidget(label('系统状态', 'cardTitle'))
+        top.setSpacing(18)
+        top.addWidget(label('遥操作链路', 'cardTitle'))
         self.summary = StatusDot(role='heroState')
-        text.addWidget(self.summary)
-        self.summary_description = label('', 'secondary')
-        text.addWidget(self.summary_description)
-        top.addLayout(text, 1)
-        metadata = QVBoxLayout()
-        metadata.setSpacing(8)
+        top.addWidget(self.summary)
+        top.addStretch()
         self.mode_meta = label('', 'secondary', Qt.AlignRight)
         self.domain_meta = label('', 'secondary', Qt.AlignRight)
-        metadata.addWidget(self.mode_meta)
-        metadata.addWidget(self.domain_meta)
-        metadata.addStretch()
-        top.addLayout(metadata)
+        top.addWidget(self.mode_meta)
+        top.addWidget(self.domain_meta)
         self.primary.body.addLayout(top)
-        line = QHBoxLayout()
-        line.setSpacing(28)
-        self.statuses = {}
-        self.status_layouts = []
-        for key, title in (('quest', 'Quest'), ('left', '左 RM65'), ('right', '右 RM65'), ('safety', '安全')):
-            group = QWidget()
-            column = QVBoxLayout(group)
-            column.setContentsMargins(0, 0, 0, 0)
-            column.setSpacing(5)
-            column.addWidget(label(title, 'secondary'))
-            state = StatusDot()
-            column.addWidget(state, 0, Qt.AlignLeft)
-            line.addWidget(group, 1)
-            self.statuses[key] = state
-            self.status_layouts.append(column)
-        self.primary.body.addLayout(line)
+        self.flow = TeleopFlowWidget()
+        self.primary.body.addWidget(self.flow)
         self.alert = label('', 'caption')
         self.alert.setWordWrap(True)
         alert_row = QHBoxLayout()
@@ -110,14 +90,11 @@ class OverviewPage(Page):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.body.setSpacing(12 if self.compact else 24)
-        self.primary.body.setSpacing(6 if self.compact else 14)
-        self.primary.setMinimumHeight(148 if self.compact else 210)
-        # A single status row preserves readable Noto CJK line heights at 720p.
-        for column in self.status_layouts:
-            column.setDirection(QBoxLayout.LeftToRight if self.compact else QBoxLayout.TopToBottom)
-            column.setSpacing(8 if self.compact else 5)
-        self.primary.body.setContentsMargins(18 if self.compact else 24, 10 if self.compact else 24,
-                                            18 if self.compact else 24, 10 if self.compact else 24)
+        self.primary.body.setSpacing(4 if self.compact else 14)
+        self.primary.setMinimumHeight(156 if self.compact else 230)
+        self.flow.setFixedHeight(82 if self.compact else 112)
+        self.primary.body.setContentsMargins(18 if self.compact else 24, 8 if self.compact else 24,
+                                            18 if self.compact else 24, 8 if self.compact else 24)
         self.details.set_row_height(30 if self.compact else 42)
         self.current.body.setSpacing(6 if self.compact else 12)
         self.current.setMinimumHeight(218 if self.compact else 306)
@@ -137,19 +114,12 @@ class OverviewPage(Page):
         summary = summarize_system(snapshot)
         self.summary.set_state(summary, {'SYSTEM READY': '一切正常', 'DEGRADED': '需要注意',
                                          'FAULT': '存在故障', 'OFFLINE': '系统离线'}[summary])
-        self.summary_description.setText('双臂机器人与 VR 遥操作链路运行正常' if summary == 'SYSTEM READY'
-                                         else '查看各链路状态与安全页面了解详情')
+        self.flow.set_snapshot(snapshot)
         mode = 'Demo' if snapshot.demo else operating_mode(snapshot).title()
         self.mode_meta.setText(mode)
         self.domain_meta.setText(f'ROS Domain {snapshot.domain_id}')
         arms = (snapshot.left, snapshot.right)
         controllers = (snapshot.left_controller, snapshot.right_controller)
-        quest_state = combined_health(tuple(h for c in controllers for h in (c.pose_health, c.inputs_health)))
-        self.statuses['quest'].set_state(quest_state, '左右在线' if quest_state == 'ONLINE' else quest_state)
-        for arm in arms:
-            state = fresh_state(arm.status_health, arm.adapter.state)
-            self.statuses[arm.side].set_state(state)
-        self.statuses['safety'].set_state(summary, '正常' if summary == 'SYSTEM READY' else '需检查' if summary != 'OFFLINE' else '未知')
         online_rate = lambda h: h.hz if h.state == 'ONLINE' else None
         for key, values in (('quest', [online_rate(c.pose_health) for c in controllers]),
                             ('robot', [online_rate(a.robot_health) for a in arms])):

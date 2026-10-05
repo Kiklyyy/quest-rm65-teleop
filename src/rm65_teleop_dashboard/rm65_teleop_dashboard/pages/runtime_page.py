@@ -1,13 +1,14 @@
 """Runtime management view. Buttons emit intents; the worker owns all processes."""
 from PyQt5.QtCore import Qt, QSize, pyqtSignal
-from PyQt5.QtWidgets import QComboBox, QDialog, QGridLayout, QHBoxLayout, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QDialog, QGridLayout, QHBoxLayout, QVBoxLayout, QWidget
 from ..preflight import Confirmation, evaluate_preflight
 from ..process_manager import LaunchRequest
 from ..runtime_dialogs import HardwareConfirmation, ProcessLogDialog, action_button
 from ..runtime_observer import TITLES
 from ..runtime_service import RuntimeSnapshot
 from ..navigation import navigation_icon
-from ..widgets import (Card, Page, PrimaryPanel, RuntimeTimeline, SettingsGroup, StyledComboBox,
+from ..flow_widget import TeleopFlowWidget
+from ..widgets import (Card, Page, PrimaryPanel, SettingsGroup, StyledComboBox,
                        SegmentControl, StatusDot, divider, label, path_text)
 
 
@@ -29,18 +30,16 @@ class RuntimePage(Page):
         self.log_dialog = ProcessLogDialog(self)
         self.process_status = StatusDot()
         self.primary = PrimaryPanel()
-        top = QHBoxLayout()
-        top.setSpacing(32)
-        quick = QVBoxLayout()
-        quick.setSpacing(12)
         heading = QHBoxLayout()
         heading.addWidget(label('双臂遥操作系统', 'cardTitle'))
-        heading.addWidget(self.process_status)
         heading.addStretch()
-        quick.addLayout(heading)
+        heading.addWidget(self.process_status)
+        self.primary.body.addLayout(heading)
         description = label('管理 Quest、双臂驱动、运动控制器和遥操作节点。', 'secondary')
         description.setWordWrap(True)
-        quick.addWidget(description)
+        self.primary.body.addWidget(description)
+        self.flow = TeleopFlowWidget('runtime')
+        self.primary.body.addWidget(self.flow)
         buttons = QHBoxLayout()
         buttons.setSpacing(12)
         self.start_button = action_button('启动系统', 'primaryAction')
@@ -54,33 +53,28 @@ class RuntimePage(Page):
             button.setFixedSize(width, 44)
             buttons.addWidget(button)
         buttons.addStretch()
-        quick.addLayout(buttons)
+        self.primary.body.addLayout(buttons)
         self.start_button.clicked.connect(lambda: self._start(self.mode.current))
         self.dry_button.clicked.connect(lambda: self._start('dry_run'))
         self.stop_button.clicked.connect(lambda: self.stop_requested.emit('all'))
-        note = label('停止软件栈不等于硬件急停；硬件急停由外部设备提供。', 'caption')
-        note.setWordWrap(True)
-        quick.addWidget(note)
-        top.addLayout(quick, 6)
-        settings = QVBoxLayout()
-        settings.setSpacing(10)
+        settings = QHBoxLayout()
+        settings.setSpacing(14)
         settings.addWidget(label('启动模式', 'secondary'))
         self.mode = SegmentControl((('dry_run', 'Dry Run'), ('hardware', 'Hardware')))
         self.mode.changed.connect(lambda _: self.update_runtime(self.runtime))
         settings.addWidget(self.mode)
-        profile = QHBoxLayout()
-        profile.addWidget(label('运动配置', 'secondary'))
-        profile.addStretch()
+        settings.addSpacing(12)
+        settings.addWidget(label('运动配置', 'secondary'))
         self.profile = StyledComboBox()
         self.profile.addItems(('Safe', 'Normal'))
         self.profile.setMinimumWidth(110)
         self.profile.setFixedHeight(36)
-        profile.addWidget(self.profile)
-        settings.addLayout(profile)
-        settings.addWidget(label('默认 Dry Run · Safe', 'caption'))
-        top.addLayout(settings, 3)
-        self.primary.body.addLayout(top)
-        self.primary.setMinimumHeight(210)
+        settings.addWidget(self.profile)
+        settings.addStretch()
+        note = label('停止软件栈不等于硬件急停；硬件急停由外部设备提供。', 'caption')
+        note.setWordWrap(True)
+        settings.addWidget(note)
+        self.primary.body.addLayout(settings)
         self.body.addWidget(self.primary)
 
         middle = QHBoxLayout()
@@ -154,12 +148,12 @@ class RuntimePage(Page):
         self.body.addLayout(middle)
         lower = QHBoxLayout()
         lower.setSpacing(16)
-        flow = Card('启动流程')
-        self.timeline = RuntimeTimeline((('environment', 'ROS 2 环境'), ('driver', 'RM Driver'),
-            ('control', 'RM Control'), ('quest', 'Quest TCP'), ('adapter', 'Teleop Adapter'), ('hand', 'LinkerHand · 可选')))
-        self.steps = self.timeline.steps
-        flow.body.addWidget(self.timeline)
-        lower.addWidget(flow, 6)
+        runtime_info = SettingsGroup('运行状态')
+        self.runtime_details = runtime_info.settings
+        for key, title in (('phase', '软件栈阶段'), ('owner', '软件栈归属'),
+                           ('pid', '软件栈进程组 PID'), ('exit', '软件栈退出码')):
+            self.runtime_details.add(key, title)
+        lower.addWidget(runtime_info, 6)
         summary = SettingsGroup('运行摘要')
         self.details = summary.settings
         for key, title in (('left_cart', '左臂笛卡尔链路'), ('right_cart', '右臂笛卡尔链路'),
@@ -176,7 +170,7 @@ class RuntimePage(Page):
         self.body.addStretch()
         self.component_card = components
         self.check_card = checks
-        self.flow_card = flow
+        self.flow_card = runtime_info
         self.summary_card = summary
         self.update_runtime(self.runtime)
 
@@ -184,15 +178,17 @@ class RuntimePage(Page):
         super().resizeEvent(event)
         self.body.setSpacing(12 if self.compact else 16)
         self.component_card.body.setSpacing(0)
-        self.primary.setMinimumHeight(194 if self.compact else 205)
+        self.primary.setMinimumHeight(232 if self.compact else 240)
+        self.primary.body.setSpacing(6)
+        self.primary.body.setContentsMargins(18 if self.compact else 24, 16,
+                                            18 if self.compact else 24, 16)
         self.check_card.body.setSpacing(8)
         for card in (self.component_card, self.check_card, self.flow_card, self.summary_card):
             card.body.setContentsMargins(18, 16, 18, 16)
         self.flow_card.body.setSpacing(8)
         self.summary_card.body.setSpacing(8)
         self.details.set_row_height(36)
-        for step in self.steps.values():
-            step.setFixedHeight(34)
+        self.runtime_details.set_row_height(36)
         for button, width in ((self.start_button, 176), (self.dry_button, 130), (self.stop_button, 130)):
             button.setFixedWidth(width if self.compact else {self.start_button: 192,
                 self.dry_button: 144, self.stop_button: 144}[button])
@@ -239,8 +235,18 @@ class RuntimePage(Page):
         self.dry_button.setEnabled(snapshot.enabled and not busy and evaluate_preflight(snapshot.facts, 'dry_run').allowed)
         self.stop_button.setEnabled(snapshot.enabled and (busy or snapshot.hand.pid is not None))
         state = snapshot.system.state
+        text = {'STOPPED': '未运行', 'STARTING': '正在启动', 'RUNNING': '运行中 · 等待就绪',
+                'STOPPING': '正在停止', 'FAILED': '启动失败'}.get(state, state)
+        if state == 'RUNNING' and snapshot.ready:
+            text = '已就绪'
         self.process_status.set_state(STATE_TONE.get(state, 'DISABLED'),
-            'Demo · 不启动进程' if snapshot.demo else STATE_TEXT.get(state, state))
+            'Demo · 不启动进程' if snapshot.demo else text)
+        self.flow.set_runtime(snapshot)
+        self.runtime_details.set_value('phase', 'Demo · 不启动进程' if snapshot.demo else text)
+        external = any(c.ownership == 'External' and c.key != 'hand' for c in snapshot.components)
+        self.runtime_details.set_value('owner', '本软件管理' if busy else '外部管理' if external else '—')
+        self.runtime_details.set_value('pid', str(snapshot.system.pid) if busy else '—')
+        self.runtime_details.set_value('exit', str(snapshot.system.exit_code) if snapshot.system.exit_code is not None else '—')
         for name, state_widget in self.check_rows.values():
             name.hide()
             state_widget.hide()
@@ -257,8 +263,6 @@ class RuntimePage(Page):
                 state_widget.dot.setVisible(not snapshot.demo)
         self.check_note.setText('Demo 模式不会启动真实进程。' if snapshot.demo else
                                '检测在启动前重新执行；人工安全条件由操作者确认。')
-        self.steps['environment'].set_state('READY' if snapshot.facts.environment_ok else 'DISABLED',
-                                           '完成' if snapshot.facts.environment_ok else '未检测')
         for component in snapshot.components:
             state_widget, action, caption = self.rows[component.key]
             text = STATE_TEXT.get(component.state, component.state)
@@ -268,7 +272,6 @@ class RuntimePage(Page):
             state_widget.set_state(tone, text)
             state_widget.setToolTip(component.detail)
             caption.setText(TITLES[component.key][1])
-            self.steps[component.key].set_state(tone, STATE_TEXT.get(component.state, component.state))
             if component.key == 'hand':
                 action.setText('停止' if snapshot.hand.pid is not None else '外部管理' if component.ownership == 'External' else '启动')
                 action.setEnabled(snapshot.enabled and (snapshot.hand.pid is not None or
