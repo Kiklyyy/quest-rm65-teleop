@@ -1,6 +1,6 @@
 """Runtime management view. Buttons emit intents; the worker owns all processes."""
 from PyQt5.QtCore import Qt, QSize, pyqtSignal
-from PyQt5.QtWidgets import QDialog, QGridLayout, QHBoxLayout, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QDialog, QGridLayout, QHBoxLayout, QSizePolicy, QVBoxLayout, QWidget
 from ..preflight import Confirmation, evaluate_preflight
 from ..process_manager import LaunchRequest
 from ..runtime_dialogs import HardwareConfirmation, ProcessLogDialog, action_button
@@ -29,6 +29,8 @@ class RuntimePage(Page):
         self.confirm_dialog = None
         self.log_dialog = ProcessLogDialog(self)
         self.process_status = StatusDot()
+        top = QHBoxLayout()
+        top.setSpacing(16)
         self.primary = PrimaryPanel()
         heading = QHBoxLayout()
         heading.addWidget(label('双臂遥操作系统', 'cardTitle'))
@@ -38,44 +40,49 @@ class RuntimePage(Page):
         description = label('管理 Quest、双臂驱动、运动控制器和遥操作节点。', 'secondary')
         description.setWordWrap(True)
         self.primary.body.addWidget(description)
+        self.primary.body.addStretch()
         self.flow = TeleopFlowWidget('runtime')
         self.primary.body.addWidget(self.flow)
-        buttons = QHBoxLayout()
-        buttons.setSpacing(12)
+        self.primary.body.addStretch()
+        self.flow_caption = label('', 'caption')
+        self.primary.body.addWidget(self.flow_caption)
+        top.addWidget(self.primary, 7)
+
+        self.settings_panel = Card('启动设置')
+        settings = self.settings_panel.body
+        mode_group = QVBoxLayout()
+        mode_group.setSpacing(4)
+        mode_group.addWidget(label('运行模式', 'secondary'))
+        self.mode = SegmentControl((('dry_run', 'Dry Run'), ('hardware', 'Hardware')))
+        self.mode.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.mode.changed.connect(lambda _: self.update_runtime(self.runtime))
+        mode_group.addWidget(self.mode)
+        settings.addLayout(mode_group)
+        profile_group = QVBoxLayout()
+        profile_group.setSpacing(4)
+        profile_group.addWidget(label('运动配置', 'secondary'))
+        self.profile = StyledComboBox()
+        self.profile.addItems(('Safe', 'Normal'))
+        self.profile.setFixedHeight(36)
+        profile_group.addWidget(self.profile)
+        settings.addLayout(profile_group)
         self.start_button = action_button('启动系统', 'primaryAction')
         self.start_button.setIcon(navigation_icon('play', '#FFFFFF'))
         self.start_button.setIconSize(QSize(16, 16))
-        self.dry_button = action_button('Dry Run')
         self.stop_button = action_button('停止系统', 'destructiveAction')
         self.stop_button.setIcon(navigation_icon('stop', '#D70015'))
         self.stop_button.setIconSize(QSize(14, 14))
-        for button, width in ((self.start_button, 192), (self.dry_button, 144), (self.stop_button, 144)):
-            button.setFixedSize(width, 44)
-            buttons.addWidget(button)
-        buttons.addStretch()
-        self.primary.body.addLayout(buttons)
+        self.start_button.setFixedHeight(44)
+        self.stop_button.setFixedHeight(40)
+        settings.addWidget(self.start_button)
+        settings.addWidget(self.stop_button)
         self.start_button.clicked.connect(lambda: self._start(self.mode.current))
-        self.dry_button.clicked.connect(lambda: self._start('dry_run'))
         self.stop_button.clicked.connect(lambda: self.stop_requested.emit('all'))
-        settings = QHBoxLayout()
-        settings.setSpacing(14)
-        settings.addWidget(label('启动模式', 'secondary'))
-        self.mode = SegmentControl((('dry_run', 'Dry Run'), ('hardware', 'Hardware')))
-        self.mode.changed.connect(lambda _: self.update_runtime(self.runtime))
-        settings.addWidget(self.mode)
-        settings.addSpacing(12)
-        settings.addWidget(label('运动配置', 'secondary'))
-        self.profile = StyledComboBox()
-        self.profile.addItems(('Safe', 'Normal'))
-        self.profile.setMinimumWidth(110)
-        self.profile.setFixedHeight(36)
-        settings.addWidget(self.profile)
-        settings.addStretch()
-        note = label('停止软件栈不等于硬件急停；硬件急停由外部设备提供。', 'caption')
+        note = label('停止系统仅停止本软件管理的进程。\n硬件急停由外部设备提供。', 'caption')
         note.setWordWrap(True)
         settings.addWidget(note)
-        self.primary.body.addLayout(settings)
-        self.body.addWidget(self.primary)
+        top.addWidget(self.settings_panel, 3)
+        self.body.addLayout(top)
 
         middle = QHBoxLayout()
         middle.setSpacing(16)
@@ -178,10 +185,11 @@ class RuntimePage(Page):
         super().resizeEvent(event)
         self.body.setSpacing(12 if self.compact else 16)
         self.component_card.body.setSpacing(0)
-        self.primary.setMinimumHeight(232 if self.compact else 240)
-        self.primary.body.setSpacing(6)
+        self.primary.body.setSpacing(12)
         self.primary.body.setContentsMargins(18 if self.compact else 24, 16,
                                             18 if self.compact else 24, 16)
+        self.settings_panel.body.setContentsMargins(18, 16, 18, 16)
+        self.settings_panel.body.setSpacing(10)
         self.check_card.body.setSpacing(8)
         for card in (self.component_card, self.check_card, self.flow_card, self.summary_card):
             card.body.setContentsMargins(18, 16, 18, 16)
@@ -189,9 +197,6 @@ class RuntimePage(Page):
         self.summary_card.body.setSpacing(8)
         self.details.set_row_height(36)
         self.runtime_details.set_row_height(36)
-        for button, width in ((self.start_button, 176), (self.dry_button, 130), (self.stop_button, 130)):
-            button.setFixedWidth(width if self.compact else {self.start_button: 192,
-                self.dry_button: 144, self.stop_button: 144}[button])
 
     def _start(self, mode, component='system'):
         if not self.runtime.enabled:
@@ -223,7 +228,7 @@ class RuntimePage(Page):
 
     def update_runtime(self, snapshot):
         self.runtime = snapshot
-        for button in (self.start_button, self.dry_button, self.stop_button, self.rows['hand'][1]):
+        for button in (self.start_button, self.stop_button, self.rows['hand'][1]):
             if button.property('demoPreview') != snapshot.demo:
                 button.setProperty('demoPreview', snapshot.demo)
                 button.style().unpolish(button)
@@ -232,7 +237,6 @@ class RuntimePage(Page):
         preflight = evaluate_preflight(snapshot.facts, self.mode.current)
         busy = snapshot.system.pid is not None
         self.start_button.setEnabled(snapshot.enabled and not busy and preflight.allowed)
-        self.dry_button.setEnabled(snapshot.enabled and not busy and evaluate_preflight(snapshot.facts, 'dry_run').allowed)
         self.stop_button.setEnabled(snapshot.enabled and (busy or snapshot.hand.pid is not None))
         state = snapshot.system.state
         text = {'STOPPED': '未运行', 'STARTING': '正在启动', 'RUNNING': '运行中 · 等待就绪',
@@ -240,7 +244,9 @@ class RuntimePage(Page):
         if state == 'RUNNING' and snapshot.ready:
             text = '已就绪'
         self.process_status.set_state(STATE_TONE.get(state, 'DISABLED'),
-            'Demo · 不启动进程' if snapshot.demo else text)
+            '未运行' if snapshot.demo else text)
+        self.flow_caption.setText('Demo 模式不会启动真实进程' if snapshot.demo else
+            '软件栈尚未启动' if state == 'STOPPED' else '组件状态根据现有 ROS 就绪证据更新')
         self.flow.set_runtime(snapshot)
         self.runtime_details.set_value('phase', 'Demo · 不启动进程' if snapshot.demo else text)
         external = any(c.ownership == 'External' and c.key != 'hand' for c in snapshot.components)

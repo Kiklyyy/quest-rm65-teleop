@@ -1,7 +1,7 @@
 """Read-only presentation of telemetry and lifecycle snapshots, with no ROS dependency."""
 from dataclasses import dataclass
 from PyQt5.QtCore import Qt, QPointF, QRectF
-from PyQt5.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PyQt5.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPen
 from PyQt5.QtWidgets import QSizePolicy, QWidget
 from .widgets import combined_health, fresh_state
 
@@ -144,8 +144,18 @@ class TeleopFlowWidget(QWidget):
         width = min(138, self.width() / 6.6)
         span = max(0, self.width() - width)
         if self.kind == 'runtime':
-            return {key: QRectF(span * index / 5, 12, width, 38)
-                    for index, key in enumerate(self.nodes)}
+            font = QFont(self.font())
+            font.setPixelSize(13)
+            font.setWeight(QFont.Medium)
+            metrics = QFontMetrics(font)
+            widths = {key: max(74, metrics.horizontalAdvance(node.title) + 24)
+                      for key, node in self.nodes.items()}
+            gap = max(0, (self.width() - sum(widths.values())) / max(1, len(widths) - 1))
+            rects, x = {}, 0
+            for key, node_width in widths.items():
+                rects[key] = QRectF(x, 12, node_width, 38)
+                x += node_width + gap
+            return rects
         top, bottom = 3, self.height() - 40
         center = (top + bottom) / 2
         return {key: QRectF(span * x, y, width, 38) for key, x, y in (

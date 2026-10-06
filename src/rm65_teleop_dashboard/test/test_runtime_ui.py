@@ -14,7 +14,7 @@ def test_runtime_navigation_and_demo_cannot_start(application):
     assert window.current_page == 'runtime-control'
     page = window.pages['runtime-control']
     assert not page.start_button.isEnabled()
-    assert not page.dry_button.isEnabled()
+    assert not hasattr(page, 'dry_button')
     assert not page.stop_button.isEnabled()
     window.close()
 
@@ -33,7 +33,7 @@ def test_hardware_sheet_requires_all_manual_items_and_preflight(application):
     dialog.close()
 
 
-def test_dry_run_button_emits_request_not_ros_command(application):
+def test_selected_dry_run_start_emits_request_not_ros_command(application):
     window = MainWindow()
     window.update_snapshot(SystemSnapshot())
     window.update_runtime(RuntimeSnapshot(enabled=True, facts=PreflightFacts(
@@ -41,6 +41,7 @@ def test_dry_run_button_emits_request_not_ros_command(application):
     page = window.pages['runtime-control']
     requests = []
     page.start_requested.connect(lambda req, confirmation: requests.append(req))
-    page.dry_button.click()
+    page.mode.select('dry_run')
+    page.start_button.click()
     assert len(requests) == 1 and requests[0].mode == 'dry_run'
     window.close()

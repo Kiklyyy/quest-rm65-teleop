@@ -31,7 +31,7 @@ def test_demo_preview_clicks_never_reach_process_manager(application, monkeypatc
     application.processEvents()
     for mode in ('dry_run', 'hardware'):
         page.mode.select(mode)
-        for button in (page.start_button, page.dry_button, page.stop_button, page.rows['hand'][1]):
+        for button in (page.start_button, page.stop_button, page.rows['hand'][1]):
             assert button.property('demoPreview') is True
             assert not button.isEnabled()
             page.ensureWidgetVisible(button)
@@ -68,14 +68,15 @@ def test_new_presentation_components_render_existing_values(application):
         widget.close()
 
 
-def test_primary_runtime_owns_actions_and_settings(application):
+def test_runtime_settings_owns_actions_and_primary_owns_flow(application):
     window = MainWindow()
     page = window.pages['runtime-control']
     assert isinstance(page.primary, PrimaryPanel)
-    assert page.primary.isAncestorOf(page.start_button)
-    assert page.primary.isAncestorOf(page.mode)
-    assert page.primary.isAncestorOf(page.profile)
-    assert page.start_button.width() > page.dry_button.width()
+    assert page.primary.isAncestorOf(page.flow)
+    assert page.settings_panel.isAncestorOf(page.start_button)
+    assert page.settings_panel.isAncestorOf(page.mode)
+    assert page.settings_panel.isAncestorOf(page.profile)
+    assert page.start_button.property('role') == 'primaryAction'
     assert page.start_button.height() == 44
     assert len(page.flow.nodes) == 6
     assert page.rows['driver'][1].text() == '由系统管理'
