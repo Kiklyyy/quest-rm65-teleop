@@ -16,11 +16,82 @@
 | `src/Quest2ROS2/` | Quest 输入、模拟输入、右手虚拟目标 bridge 及其单元测试 |
 | `src/quest2ros/` | `OVR2ROSInputs` 与 `OVR2ROSHapticFeedback` 自定义消息定义 |
 | `src/rm65_teleop_adapter/` | 右 RM65 Quest 6DoF 遥操作、安全状态机与 Home Action |
+| `src/rm65_teleop_dashboard/` | 双臂遥操作监控与运行管理：只读 ROS 监控、显式进程管理与无 ROS demo |
 | `src/rm65_teleop_adapter/scripts/right_linkerhand_node.py` | 独立右 L7 食指扳机节点，默认不启动 |
 | `src/ros_tcp_communication/` | Unity/Quest 到 ROS 2 的 TCP Endpoint，包含当前现场通信补丁 |
 | `docs/` | 来源追溯、接口契约和 A/B 两条开发进度线 |
 
 详细状态见 [STATUS.md](STATUS.md)，接口与安全约束见 [docs/INTERFACE.md](docs/INTERFACE.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+
+## Dashboard — 双臂机器人遥操作监控与运行管理系统 V1.0
+
+**ROS monitoring is read-only; process startup is explicit.** 独立 `rm65_teleop_dashboard` 包使用系统 Python 3.10、
+PyQt5 和 rclpy，订阅真实 Quest、双 RM65 反馈、adapter JSON 和右 LinkerHand
+状态。监测层仍为 13 个订阅、0 publisher/service/action client，不提供 Home/Preset/
+手部运动或 GUI 急停按钮。新增“运行控制”通过现有 dual launch 管理软件进程。
+Hardware 启动需要预检及人工确认；默认建议 Dry Run。六个 RM65 关节与右手
+七通道明确区分；左末端设备显示未配置。后台 ROS 线程更新快照，Qt 以 10 Hz 刷新。
+
+浅色工作站界面使用侧栏导航：总览、运行控制、双臂、VR 控制器、安全、灵巧手和事件。
+总览以双 Quest 汇合、双 RM65 分支及右灵巧手支线展示实时遥操作链路，并保留四项关键指标。
+运行控制的独立软件栈状态流展示现有组件就绪证据；位姿、关节和诊断信息在独立页面中查看。
+`--page overview|runtime-control|arms|controllers|safety|linkerhand|events` 可选择启动页面。
+模型、ROS 采集、解析器和 Demo 数据保持原样，进程管理是独立后台层。
+见[V3 架构、命令与验证](docs/progress/teleop-dashboard-runtime.md)、
+[V4 视觉精修](docs/progress/teleop-dashboard-v4.md)和
+[V5 链路视觉、状态映射与验证](docs/progress/teleop-dashboard-v5.md)。
+[总览截图](docs/screenshots/v5/overview-1920x1080.png) ·
+[运行控制截图](docs/screenshots/v5/runtime-control-1920x1080.png)。
+
+先检查 Ubuntu 系统 Qt 包；缺少时优先使用 apt 的 `python3-pyqt5`，不要安装到 Conda：
+
+```bash
+/usr/bin/python3 -c "import PyQt5; print(PyQt5.__file__)"
+source /opt/ros/humble/setup.bash
+/usr/bin/colcon build --symlink-install --packages-select rm65_teleop_dashboard
+source install/setup.bash
+ros2 run rm65_teleop_dashboard teleop_dashboard --demo
+```
+
+`--demo` 不需要 ROS、Quest 或机器人连接，动态生成数据，并持续显示 **Demo**；
+进程操作全部禁用，按钮仅保留正常配色作为视觉预览，不伪造实际 launch 成功。
+也可以直接从源码运行：
+
+```bash
+PYTHONPATH=src/rm65_teleop_dashboard \
+  /usr/bin/python3 -m rm65_teleop_dashboard.app --demo
+
+QT_QPA_PLATFORM=offscreen \
+PYTHONPATH=src/rm65_teleop_dashboard \
+  /usr/bin/python3 -m rm65_teleop_dashboard.app \
+  --demo --page overview --screenshot /tmp/teleop-dashboard.png
+```
+
+可以监控外部已运行的系统，也可以从运行控制页显式启动新系统，使用相同 ROS domain：
+
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=42
+ros2 launch rm65_teleop_dashboard dashboard.launch.py
+# Or: ros2 run rm65_teleop_dashboard teleop_dashboard
+```
+
+Launch 默认 `demo:=false`，打开界面不会自动启动机器人。外部进程标记 External，
+不会被 GUI 停止。停止系统只终止本软件拥有的进程组，不等于硬件急停。
+右灵巧手默认不启动，硬件独立启动还需确认尚未关闭的第二 API 连接共存风险。
+流失联显示 STALE/LOST；现有 adapter 安全判定不变。
+
+从未 source 的桌面环境启动时，可指定当前工作空间安装入口：
+
+```bash
+ROS_DOMAIN_ID=42 PYTHONPATH=src/rm65_teleop_dashboard \
+  /usr/bin/python3 -m rm65_teleop_dashboard.app \
+  --workspace-setup "$PWD/install/setup.bash" --page runtime-control
+```
+
+也支持 `TELEOP_WORKSPACE_SETUP` 环境变量和当前安装前缀自动发现。只在 Ubuntu
+启用 ROS 生命周期；Windows 仅运行 UI、Demo 和 fake-runner 测试。
 
 ## 右手 LinkerHand L7 软件预览
 
