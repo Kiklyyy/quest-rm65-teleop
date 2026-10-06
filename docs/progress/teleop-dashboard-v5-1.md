@@ -31,12 +31,20 @@ Overview 几何全部不变；未添加换行系统、动画、按钮或其他�
 原 Demo 鼠标测试仍覆盖两个模式，确保 0 start/stop signal、0 ProcessManager.start、0 进程句柄。
 
 Windows 完整 Dashboard：**173 passed、4 个预期 ROS/POSIX skip、4 subtests passed**。
-Ubuntu 和五包回归结果待 CI 验证后补充。
+Ubuntu 22.04 / Humble / 系统 Python 3.10：**177 passed**（原 166 + 新增 11）。
+五包构建和 Dashboard 单包构建通过；五包回归 **445 tests、0 errors、0 failures、0 skipped**。
+[实现提交 8ad9490 的完整 CI](https://github.com/Kiklyyy/quest-rm65-teleop/actions/runs/37414144479)
+同时通过 13 路 ROS 接收/零输出端点、线程退出、隔离双臂软件 Dry Run、所属进程组停止后
+TCP 10000 释放、离线 ROS 和未 source 桌面入口。既有未版本化现场 LinkerHand SDK transport
+CTest 排除项不变，没有安装或连接 SDK，也没有将该排除项算作通过。
+已下载并复核 CI 中两张 Runtime 截图，Ubuntu/Noto CJK 的文字与节点完整；CI artifact
+仍沿用原工作流的 `captures/v5/` 路径，本轮没有更改工作流。
 
 已逐张审查两张截图，并完成独立只读代码/视觉审查：主次按钮明确、模式/配置无歧义、
 节点文字不截断、两侧不重叠、下方区域保持原样。1280/1366/1920 构造及截图用例通过。
 
-`_start()`、LaunchRequest、preflight、HardwareConfirmation、原有启停 guard 均保持原样。
+AST 对比确认 `_start()`、`_hand_action()`、全部 Flow 映射及绘制函数均保持原样。
+LaunchRequest、preflight、HardwareConfirmation、原有启停 guard 均保持原样。
 `models.py`、`ros_monitor.py`、`demo_data.py`、`process_manager.py`、`preflight.py`、
 `runtime_service.py`、`runtime_observer.py`、`process_environment.py`、`runtime_dialogs.py`、
 `app.py`、其他六个页面、共享样式及 CI 工作流相对基线均无 diff。
